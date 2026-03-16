@@ -8,7 +8,7 @@ networkx==3.6.1
 numpy==2.4.3
 pandas==3.0.1
 
-# Wizualization and graphs
+# Visualization and graphs
 folium==0.20.0
 matplotlib==3.10.8
 fr24sdk==0.3.0
