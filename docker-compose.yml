@@ -1,33 +1,32 @@
 services:
   atc-system:
-    # 1. Budowanie obrazu na podstawie Dockerfile w tym samym folderze
+    # 1. Build the image using the Dockerfile located in the current directory
     build: 
       context: .
       dockerfile: Dockerfile
     
-    # 2. Nazwa kontenera widoczna w Docker Desktop
+    # 2. Container name as displayed in Docker Desktop / CLI
     container_name: atc_agent_container
+    # Keeps the container running and allows interactive terminal access
+    tty: true          
+    stdin_open: true   
 
-    tty: true          # <--- DODAJ TO
-    stdin_open: true   # <--- DODAJ TO
-
-    # 3. Mapowanie portów (Host:Kontener)
+    # 3. Port mapping (Host:Container)
     ports:
-      - "5000:5000"  # Flask (Twoja strona WWW)
-      - "8265:8265"  # Ray Dashboard (Wizualizacja aktorów)
+      - "5000:5000"  # Flask API / Web Interface
+      - "8265:8265"  # Ray Dashboard (Actor visualization)
 
-    # 4. Synchronizacja plików (Volume)
-    # Łączy Twój folder na dysku z folderem /app w kontenerze.
-    # Dzięki temu zmiany w kodzie są widoczne natychmiast.
+    # 4. Volume synchronization
+    # Maps the local directory to /app inside the container.
+    # Enables hot-reloading: code changes on host reflect instantly in the container.
     volumes:
       - .:/app
 
-    # 5. Zmienne środowiskowe
+    # 5. Environment variables
     environment:
-      - PYTHONUNBUFFERED=1 # Logi z Pythona pojawiają się od razu w terminalu
-      - FLASK_ENV=development # Flask będzie w trybie debug (auto-reload)
+      - PYTHONUNBUFFERED=1 # Ensures Python logs are flushed to the terminal in real-time
+      - FLASK_ENV=development # Enables Flask debug mode and auto-reload
 
-    # 6. Komenda startowa
-    # Uruchamia główny skrypt Twojej aplikacji
+    # 6. Startup configuration
     working_dir: /app
     command: python main.py
