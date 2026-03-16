@@ -13,7 +13,7 @@ services:
 
     # 3. Port mapping (Host:Container)
     ports:
-      - "5000:5000"  # Flask API / Web Interface
+      - "5001:5000"  # Flask API / Web Interface
       - "8265:8265"  # Ray Dashboard (Actor visualization)
 
     # 4. Volume synchronization
