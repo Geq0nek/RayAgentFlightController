@@ -1,0 +1,7 @@
+ray[default]==2.9.3
+pandas
+numpy
+requests
+networkx
+flask
+fr24sdk

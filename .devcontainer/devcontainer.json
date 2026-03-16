@@ -1,0 +1,16 @@
+{
+    "name": "ATC-Agent-System",
+    "dockerComposeFile": "../docker-compose.yml",
+    "service": "atc-system", // Nazwa usługi z pliku docker-compose.yml
+    "workspaceFolder": "/app",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "njpwerner.autodocstring"
+            ]
+        }
+    },
+    "forwardPorts": [5000, 8265],
+    "remoteUser": "root"
+}
