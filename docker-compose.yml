@@ -1,32 +1,37 @@
 services:
-  atc-system:
-    # 1. Build the image using the Dockerfile located in the current directory
+  # --- BACKEND: Python Flask API & Ray Agents ---
+  server:
     build: 
-      context: .
+      context: ./server
       dockerfile: Dockerfile
-    
-    # 2. Container name as displayed in Docker Desktop / CLI
-    container_name: atc_agent_container
-    # Keeps the container running and allows interactive terminal access
-    tty: true          
-    stdin_open: true   
-
-    # 3. Port mapping (Host:Container)
+    container_name: atc_server_container
+    # Standard settings for interactive terminal and debugging
+    tty: true
+    stdin_open: true
     ports:
-      - "5001:5000"  # Flask API / Web Interface
-      - "8265:8265"  # Ray Dashboard (Actor visualization)
-
-    # 4. Volume synchronization
-    # Maps the local directory to /app inside the container.
-    # Enables hot-reloading: code changes on host reflect instantly in the container.
+      - "5001:5000"  # Map Flask API port
+      - "8265:8265"  # Map Ray Dashboard (Actor visualization)
     volumes:
-      - .:/app
-
-    # 5. Environment variables
+      # Mount the entire root folder to /workspace to see both client/server in VS Code
+      - .:/workspace 
     environment:
-      - PYTHONUNBUFFERED=1 # Ensures Python logs are flushed to the terminal in real-time
-      - FLASK_ENV=development # Enables Flask debug mode and auto-reload
-
-    # 6. Startup configuration
-    working_dir: /app
+      - PYTHONUNBUFFERED=1     # Ensure logs are printed to console immediately
+      - FLASK_ENV=development  # Enable hot-reloading for the API
+    # Set the working directory to the server subfolder for Python imports
+    working_dir: /workspace/server
     command: python main.py
+
+  # --- FRONTEND: Web UI (Nginx) ---
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: atc_client_container
+    ports:
+      - "8080:80"    # Map Nginx (port 80) to localhost:8080
+    volumes:
+      # Sync only the client folder with Nginx's public directory
+      - ./client:/usr/share/nginx/html:ro
+    # The frontend waits for the backend to be ready
+    depends_on:
+      - server

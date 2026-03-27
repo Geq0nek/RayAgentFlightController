@@ -1,0 +1,97 @@
+# Full list of airports/airfields in Poland by all 16 Voivodeships
+voivodeships:
+  mazowieckie:
+    - name: "Warsaw Chopin Airport"
+      iata_code: "WAW"
+      location: { latitude: 52.1657, longitude: 20.9671 }
+      infrastructure: { runways_count: 2, parking_stands: 80 }
+
+  malopolskie:
+    - name: "Kraków John Paul II International Airport"
+      iata_code: "KRK"
+      location: { latitude: 50.0777, longitude: 19.7848 }
+      infrastructure: { runways_count: 1, parking_stands: 22 }
+
+  dolnoslaskie:
+    - name: "Wrocław Copernicus Airport"
+      iata_code: "WRO"
+      location: { latitude: 51.1027, longitude: 16.8858 }
+      infrastructure: { runways_count: 1, parking_stands: 15 }
+
+  pomorskie:
+    - name: "Gdańsk Lech Wałęsa Airport"
+      iata_code: "GDN"
+      location: { latitude: 54.3775, longitude: 18.4661 }
+      infrastructure: { runways_count: 1, parking_stands: 18 }
+
+  wielkopolskie:
+    - name: "Poznań-Ławica Henryk Wieniawski Airport"
+      iata_code: "POZ"
+      location: { latitude: 52.4211, longitude: 16.8264 }
+      infrastructure: { runways_count: 1, parking_stands: 11 }
+
+  slaskie:
+    - name: "Katowice Wojciech Korfanty Airport"
+      iata_code: "KTW"
+      location: { latitude: 50.4742, longitude: 19.0800 }
+      infrastructure: { runways_count: 1, parking_stands: 33 }
+
+  podkarpackie:
+    - name: "Rzeszów-Jasionka Airport"
+      iata_code: "RZE"
+      location: { latitude: 50.1100, longitude: 22.0190 }
+      infrastructure: { runways_count: 1, parking_stands: 12 }
+
+  zachodniopomorskie:
+    - name: "Solidarity Szczecin–Goleniów Airport"
+      iata_code: "SZZ"
+      location: { latitude: 53.5847, longitude: 14.9019 }
+      infrastructure: { runways_count: 1, parking_stands: 8 }
+
+  kujawsko_pomorskie:
+    - name: "Bydgoszcz Ignacy Jan Paderewski Airport"
+      iata_code: "BZG"
+      location: { latitude: 53.0967, longitude: 17.9778 }
+      infrastructure: { runways_count: 1, parking_stands: 5 }
+
+  lubelskie:
+    - name: "Lublin Airport"
+      iata_code: "LUZ"
+      location: { latitude: 51.2403, longitude: 22.7136 }
+      infrastructure: { runways_count: 1, parking_stands: 6 }
+
+  lubuskie:
+    - name: "Zielona Góra-Babimost Airport"
+      iata_code: "IEG"
+      location: { latitude: 52.1386, longitude: 15.7986 }
+      infrastructure: { runways_count: 1, parking_stands: 3 }
+
+  lodzkie:
+    - name: "Łódź Władysław Reymont Airport"
+      iata_code: "LCJ"
+      location: { latitude: 51.7219, longitude: 19.3981 }
+      infrastructure: { runways_count: 1, parking_stands: 10 }
+
+  warminsko_mazurskie:
+    - name: "Olsztyn-Mazury Airport"
+      iata_code: "SZY"
+      location: { latitude: 53.4819, longitude: 20.9378 }
+      infrastructure: { runways_count: 1, parking_stands: 4 }
+
+  podlaskie:
+    - name: "Białystok-Krywlany Airport"
+      iata_code: "QPY"
+      location: { latitude: 53.1072, longitude: 23.1750 }
+      infrastructure: { runways_count: 1, parking_stands: 2 }
+
+  swietokrzyskie:
+    - name: "Kielce-Masłów Airport"
+      iata_code: "APK"
+      location: { latitude: 50.8981, longitude: 20.7222 }
+      infrastructure: { runways_count: 1, parking_stands: 2 }
+
+  opolskie:
+    - name: "Opole Kamien Slaski Airport"
+      iata_code: "QMO"
+      location: { latitude: 50.5357, longitude: 18.0827 }
+      infrastructure: { runways_count: 1, parking_stands: 2 }
