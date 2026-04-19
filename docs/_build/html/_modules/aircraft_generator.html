@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>aircraft_generator &#8212; Flight Radar Simulator 1.0.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css?v=27fed22d" />
+    <script src="../_static/documentation_options.js?v=8d563738"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for aircraft_generator</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">random</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">flight_states</span><span class="w"> </span><span class="kn">import</span> <span class="n">FlightState</span>
+
+
+<div class="viewcode-block" id="Aircraft">
+<a class="viewcode-back" href="../modules/aircraft.html#aircraft_generator.Aircraft">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Aircraft</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">aircraft_id</span><span class="p">,</span> <span class="n">starting_point</span><span class="p">,</span> <span class="n">destination</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">id</span> <span class="o">=</span> <span class="n">aircraft_id</span>  <span class="c1"># Unique ID (e.g., SP-ABC or LOT123)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">starting_point</span> <span class="o">=</span> <span class="n">starting_point</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">destination</span> <span class="o">=</span> <span class="n">destination</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">position</span> <span class="o">=</span> <span class="n">starting_point</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">speed</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">400</span><span class="p">,</span> <span class="mi">500</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">=</span> <span class="n">FlightState</span><span class="o">.</span><span class="n">PARKED</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">start_date</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">landing_date</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">height</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">7000</span><span class="p">,</span> <span class="mi">12000</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">actual_voivodeship</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="c1"># GPS coordinates for real-time tracking</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">current_lat</span> <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">current_lon</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Dynamic generated name for logs.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">id</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">starting_point</span><span class="si">}</span><span class="s2"> -&gt; </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">destination</span><span class="si">}</span><span class="s2">&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Using .name to show &quot;PARKED&quot; instead of Enum object</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;&lt;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> | State: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">state</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&gt;&quot;</span></div>
+
+
+
+<div class="viewcode-block" id="AircraftGenerator">
+<a class="viewcode-back" href="../modules/aircraft_generator.html#aircraft_generator.AircraftGenerator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">AircraftGenerator</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Prefixes for different airlines</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">prefixes</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;LOT&#39;</span><span class="p">,</span> <span class="s1">&#39;ENT&#39;</span><span class="p">,</span> <span class="s1">&#39;WZZ&#39;</span><span class="p">,</span> <span class="s1">&#39;RYR&#39;</span><span class="p">,</span> <span class="s1">&#39;LHT&#39;</span><span class="p">]</span>
+        <span class="c1"># Set to keep track of IDs currently in use</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">active_ids</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">voivodeship_boundaries</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_load_voivodeship_boundaries</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_load_voivodeship_boundaries</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Load voivodeship geometries from GeoJSON and cache them in memory.&quot;&quot;&quot;</span>
+        <span class="n">geojson_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">normpath</span><span class="p">(</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="vm">__file__</span><span class="p">),</span> <span class="s1">&#39;..&#39;</span><span class="p">,</span> <span class="s1">&#39;pol_admin_boundaries&#39;</span><span class="p">,</span> <span class="s1">&#39;pol_admin1_em.geojson&#39;</span><span class="p">)</span>
+        <span class="p">)</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">geojson_path</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                <span class="n">data</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+
+            <span class="n">boundaries</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">feature</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;features&#39;</span><span class="p">,</span> <span class="p">[]):</span>
+                <span class="n">properties</span> <span class="o">=</span> <span class="n">feature</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;properties&#39;</span><span class="p">,</span> <span class="p">{})</span>
+                <span class="n">geometry</span> <span class="o">=</span> <span class="n">feature</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;geometry&#39;</span><span class="p">,</span> <span class="p">{})</span>
+                <span class="n">name</span> <span class="o">=</span> <span class="n">properties</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;adm1_name&#39;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">name</span> <span class="ow">and</span> <span class="n">geometry</span><span class="p">:</span>
+                    <span class="n">boundaries</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">name</span><span class="p">,</span> <span class="n">geometry</span><span class="p">))</span>
+            <span class="k">return</span> <span class="n">boundaries</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">OSError</span><span class="p">,</span> <span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_point_on_segment</span><span class="p">(</span><span class="n">px</span><span class="p">,</span> <span class="n">py</span><span class="p">,</span> <span class="n">x1</span><span class="p">,</span> <span class="n">y1</span><span class="p">,</span> <span class="n">x2</span><span class="p">,</span> <span class="n">y2</span><span class="p">,</span> <span class="n">eps</span><span class="o">=</span><span class="mf">1e-12</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return True if point lies on the segment defined by two vertices.&quot;&quot;&quot;</span>
+        <span class="n">cross</span> <span class="o">=</span> <span class="p">(</span><span class="n">py</span> <span class="o">-</span> <span class="n">y1</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">x2</span> <span class="o">-</span> <span class="n">x1</span><span class="p">)</span> <span class="o">-</span> <span class="p">(</span><span class="n">px</span> <span class="o">-</span> <span class="n">x1</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">y2</span> <span class="o">-</span> <span class="n">y1</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">abs</span><span class="p">(</span><span class="n">cross</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">eps</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="n">dot</span> <span class="o">=</span> <span class="p">(</span><span class="n">px</span> <span class="o">-</span> <span class="n">x1</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">px</span> <span class="o">-</span> <span class="n">x2</span><span class="p">)</span> <span class="o">+</span> <span class="p">(</span><span class="n">py</span> <span class="o">-</span> <span class="n">y1</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">py</span> <span class="o">-</span> <span class="n">y2</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">dot</span> <span class="o">&lt;=</span> <span class="n">eps</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_point_in_ring</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lon</span><span class="p">,</span> <span class="n">lat</span><span class="p">,</span> <span class="n">ring</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Ray-casting test for a single linear ring.&quot;&quot;&quot;</span>
+        <span class="n">inside</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">ring</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">ring</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+            <span class="n">x1</span><span class="p">,</span> <span class="n">y1</span> <span class="o">=</span> <span class="n">ring</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">x2</span><span class="p">,</span> <span class="n">y2</span> <span class="o">=</span> <span class="n">ring</span><span class="p">[(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">%</span> <span class="n">n</span><span class="p">]</span>
+
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_point_on_segment</span><span class="p">(</span><span class="n">lon</span><span class="p">,</span> <span class="n">lat</span><span class="p">,</span> <span class="n">x1</span><span class="p">,</span> <span class="n">y1</span><span class="p">,</span> <span class="n">x2</span><span class="p">,</span> <span class="n">y2</span><span class="p">):</span>
+                <span class="k">return</span> <span class="kc">True</span>
+
+            <span class="n">intersects</span> <span class="o">=</span> <span class="p">((</span><span class="n">y1</span> <span class="o">&gt;</span> <span class="n">lat</span><span class="p">)</span> <span class="o">!=</span> <span class="p">(</span><span class="n">y2</span> <span class="o">&gt;</span> <span class="n">lat</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">intersects</span><span class="p">:</span>
+                <span class="n">xinters</span> <span class="o">=</span> <span class="p">(</span><span class="n">x2</span> <span class="o">-</span> <span class="n">x1</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">lat</span> <span class="o">-</span> <span class="n">y1</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">y2</span> <span class="o">-</span> <span class="n">y1</span><span class="p">)</span> <span class="o">+</span> <span class="n">x1</span>
+                <span class="k">if</span> <span class="n">lon</span> <span class="o">&lt;</span> <span class="n">xinters</span><span class="p">:</span>
+                    <span class="n">inside</span> <span class="o">=</span> <span class="ow">not</span> <span class="n">inside</span>
+
+        <span class="k">return</span> <span class="n">inside</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_point_in_polygon</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lon</span><span class="p">,</span> <span class="n">lat</span><span class="p">,</span> <span class="n">polygon_coords</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return True if point is inside polygon (with optional holes).&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">polygon_coords</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="n">outer_ring</span> <span class="o">=</span> <span class="n">polygon_coords</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_point_in_ring</span><span class="p">(</span><span class="n">lon</span><span class="p">,</span> <span class="n">lat</span><span class="p">,</span> <span class="n">outer_ring</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="k">for</span> <span class="n">hole_ring</span> <span class="ow">in</span> <span class="n">polygon_coords</span><span class="p">[</span><span class="mi">1</span><span class="p">:]:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_point_in_ring</span><span class="p">(</span><span class="n">lon</span><span class="p">,</span> <span class="n">lat</span><span class="p">,</span> <span class="n">hole_ring</span><span class="p">):</span>
+                <span class="k">return</span> <span class="kc">False</span>
+
+        <span class="k">return</span> <span class="kc">True</span>
+
+<div class="viewcode-block" id="AircraftGenerator.generate_unique_id">
+<a class="viewcode-back" href="../modules/aircraft_generator.html#aircraft_generator.AircraftGenerator.generate_unique_id">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">generate_unique_id</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Generates a flight ID that is not currently in use.&quot;&quot;&quot;</span>
+        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="n">prefix</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">prefixes</span><span class="p">)</span>
+            <span class="n">number</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">9999</span><span class="p">)</span>
+            <span class="n">new_id</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}{</span><span class="n">number</span><span class="si">}</span><span class="s2">&quot;</span>
+
+            <span class="k">if</span> <span class="n">new_id</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">active_ids</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">active_ids</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">new_id</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">new_id</span></div>
+
+
+<div class="viewcode-block" id="AircraftGenerator.release_id">
+<a class="viewcode-back" href="../modules/aircraft_generator.html#aircraft_generator.AircraftGenerator.release_id">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">release_id</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">aircraft_id</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Call this when a flight finishes to make the ID available again.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">aircraft_id</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">active_ids</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">active_ids</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">aircraft_id</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="AircraftGenerator.create_aircraft">
+<a class="viewcode-back" href="../modules/aircraft_generator.html#aircraft_generator.AircraftGenerator.create_aircraft">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_aircraft</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">dest</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Factory method to create an Aircraft with a guaranteed unique ID.&quot;&quot;&quot;</span>
+        <span class="n">unique_id</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">generate_unique_id</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">Aircraft</span><span class="p">(</span><span class="n">unique_id</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">dest</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="AircraftGenerator.actual_voivodeship">
+<a class="viewcode-back" href="../modules/aircraft_generator.html#aircraft_generator.AircraftGenerator.actual_voivodeship">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">actual_voivodeship</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">aircraft</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Update and return current voivodeship based on aircraft GPS and GeoJSON boundaries.&quot;&quot;&quot;</span>
+
+        <span class="n">lat</span> <span class="o">=</span> <span class="n">aircraft</span><span class="o">.</span><span class="n">current_lat</span>
+        <span class="n">lon</span> <span class="o">=</span> <span class="n">aircraft</span><span class="o">.</span><span class="n">current_lon</span>
+        <span class="n">aircraft</span><span class="o">.</span><span class="n">actual_voivodeship</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="k">for</span> <span class="n">voivodeship_name</span><span class="p">,</span> <span class="n">geometry</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">voivodeship_boundaries</span><span class="p">:</span>
+            <span class="n">geometry_type</span> <span class="o">=</span> <span class="n">geometry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;type&#39;</span><span class="p">)</span>
+            <span class="n">coordinates</span> <span class="o">=</span> <span class="n">geometry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;coordinates&#39;</span><span class="p">,</span> <span class="p">[])</span>
+
+            <span class="k">if</span> <span class="n">geometry_type</span> <span class="o">==</span> <span class="s1">&#39;Polygon&#39;</span><span class="p">:</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_point_in_polygon</span><span class="p">(</span><span class="n">lon</span><span class="p">,</span> <span class="n">lat</span><span class="p">,</span> <span class="n">coordinates</span><span class="p">):</span>
+                    <span class="n">aircraft</span><span class="o">.</span><span class="n">actual_voivodeship</span> <span class="o">=</span> <span class="n">voivodeship_name</span>
+                    <span class="k">return</span> <span class="n">aircraft</span><span class="o">.</span><span class="n">actual_voivodeship</span>
+
+            <span class="k">elif</span> <span class="n">geometry_type</span> <span class="o">==</span> <span class="s1">&#39;MultiPolygon&#39;</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">polygon_coords</span> <span class="ow">in</span> <span class="n">coordinates</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_point_in_polygon</span><span class="p">(</span><span class="n">lon</span><span class="p">,</span> <span class="n">lat</span><span class="p">,</span> <span class="n">polygon_coords</span><span class="p">):</span>
+                        <span class="n">aircraft</span><span class="o">.</span><span class="n">actual_voivodeship</span> <span class="o">=</span> <span class="n">voivodeship_name</span>
+                        <span class="k">return</span> <span class="n">aircraft</span><span class="o">.</span><span class="n">actual_voivodeship</span>
+
+        <span class="k">return</span> <span class="n">aircraft</span><span class="o">.</span><span class="n">actual_voivodeship</span></div>
+</div>
+
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../index.html">Flight Radar Simulator</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Moduły serwera</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../modules/aircraft.html">Klasa Aircraft</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/aircraft_generator.html">Moduł AircraftGenerator</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/flight_engine.html">Moduł FlightEngine</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/flight_radar.html">Moduł FlightRadar</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/actor.html">Moduł Actor</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/manager.html">Moduł Manager</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/topology.html">Moduł Topology</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+  <li><a href="index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2026, Flight Radar Team.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 9.0.4</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

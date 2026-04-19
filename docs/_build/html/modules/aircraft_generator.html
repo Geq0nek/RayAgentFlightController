@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Moduł AircraftGenerator &#8212; Flight Radar Simulator 1.0.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css?v=27fed22d" />
+    <script src="../_static/documentation_options.js?v=8d563738"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Moduł FlightEngine" href="flight_engine.html" />
+    <link rel="prev" title="Klasa Aircraft" href="aircraft.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="module-aircraft_generator">
+<span id="modul-aircraftgenerator"></span><h1>Moduł AircraftGenerator<a class="headerlink" href="#module-aircraft_generator" title="Link to this heading">¶</a></h1>
+<dl class="py class">
+<dt class="sig sig-object py" id="aircraft_generator.AircraftGenerator">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">aircraft_generator.</span></span><span class="sig-name descname"><span class="pre">AircraftGenerator</span></span><a class="reference internal" href="../_modules/aircraft_generator.html#AircraftGenerator"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aircraft_generator.AircraftGenerator" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="aircraft_generator.AircraftGenerator.actual_voivodeship">
+<span class="sig-name descname"><span class="pre">actual_voivodeship</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">aircraft</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/aircraft_generator.html#AircraftGenerator.actual_voivodeship"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aircraft_generator.AircraftGenerator.actual_voivodeship" title="Link to this definition">¶</a></dt>
+<dd><p>Update and return current voivodeship based on aircraft GPS and GeoJSON boundaries.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="aircraft_generator.AircraftGenerator.create_aircraft">
+<span class="sig-name descname"><span class="pre">create_aircraft</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">start</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dest</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/aircraft_generator.html#AircraftGenerator.create_aircraft"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aircraft_generator.AircraftGenerator.create_aircraft" title="Link to this definition">¶</a></dt>
+<dd><p>Factory method to create an Aircraft with a guaranteed unique ID.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="aircraft_generator.AircraftGenerator.generate_unique_id">
+<span class="sig-name descname"><span class="pre">generate_unique_id</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/aircraft_generator.html#AircraftGenerator.generate_unique_id"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aircraft_generator.AircraftGenerator.generate_unique_id" title="Link to this definition">¶</a></dt>
+<dd><p>Generates a flight ID that is not currently in use.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="aircraft_generator.AircraftGenerator.release_id">
+<span class="sig-name descname"><span class="pre">release_id</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">aircraft_id</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/aircraft_generator.html#AircraftGenerator.release_id"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#aircraft_generator.AircraftGenerator.release_id" title="Link to this definition">¶</a></dt>
+<dd><p>Call this when a flight finishes to make the ID available again.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../index.html">Flight Radar Simulator</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Moduły serwera</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="aircraft.html">Klasa Aircraft</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Moduł AircraftGenerator</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#aircraft_generator.AircraftGenerator"><code class="docutils literal notranslate"><span class="pre">AircraftGenerator</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="flight_engine.html">Moduł FlightEngine</a></li>
+<li class="toctree-l1"><a class="reference internal" href="actor.html">Moduł Actor</a></li>
+<li class="toctree-l1"><a class="reference internal" href="manager.html">Moduł Manager</a></li>
+<li class="toctree-l1"><a class="reference internal" href="topology.html">Moduł Topology</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="aircraft.html" title="previous chapter">Klasa Aircraft</a></li>
+      <li>Next: <a href="flight_engine.html" title="next chapter">Moduł FlightEngine</a></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2026, Flight Radar Team.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 9.0.4</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="../_sources/modules/aircraft_generator.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

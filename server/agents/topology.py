@@ -53,23 +53,27 @@ class AdjacencyMatrix:
         """Return static adjacency map of Polish voivodeships."""
         # Static adjacency based on geographical borders in Poland
         return {
-            'dolnoslaskie': ['opolskie', 'slaskie', 'wielkopolskie', 'lubuskie'],
-            'kujawsko_pomorskie': ['pomorskie', 'warminsko_mazurskie', 'mazowieckie', 'wielkopolskie'],
+            'dolnoslaskie': ['opolskie', 'wielkopolskie', 'lubuskie'],
+            'kujawsko_pomorskie': ['pomorskie', 'warminsko_mazurskie', 'mazowieckie', 'wielkopolskie', 'lodzkie'],
             'lubelskie': ['mazowieckie', 'podlaskie', 'swietokrzyskie', 'podkarpackie'],
             'lubuskie': ['wielkopolskie', 'dolnoslaskie', 'zachodniopomorskie'],
-            'lodzkie': ['mazowieckie', 'swietokrzyskie', 'opolskie', 'wielkopolskie'],
+            'lodzkie': ['mazowieckie', 'swietokrzyskie', 'opolskie', 'wielkopolskie', 'slaskie', 'kujawsko_pomorskie'],
             'malopolskie': ['slaskie', 'swietokrzyskie', 'podkarpackie'],
             'mazowieckie': ['podlaskie', 'warminsko_mazurskie', 'kujawsko_pomorskie', 'lodzkie', 'swietokrzyskie', 'lubelskie'],
-            'opolskie': ['slaskie', 'dolnoslaskie', 'lodzkie', 'swietokrzyskie'],
-            'podkarpackie': ['malopolskie', 'swietokrzyskie', 'lubelskie', 'podlaskie'],
-            'podlaskie': ['warminsko_mazurskie', 'mazowieckie', 'lubelskie', 'podkarpackie'],
-            'pomorskie': ['zachodniopomorskie', 'kujawsko_pomorskie', 'warminsko_mazurskie'],
-            'slaskie': ['opolskie', 'malopolskie', 'swietokrzyskie', 'lodzkie', 'dolnoslaskie'],
-            'swietokrzyskie': ['mazowieckie', 'lodzkie', 'opolskie', 'slaskie', 'malopolskie', 'podkarpackie', 'lubelskie'],
+            'opolskie': ['slaskie', 'dolnoslaskie', 'lodzkie', 'wielkopolskie'],
+            'podkarpackie': ['malopolskie', 'swietokrzyskie', 'lubelskie'],
+            'podlaskie': ['warminsko_mazurskie', 'mazowieckie', 'lubelskie'],
+            'pomorskie': ['zachodniopomorskie', 'kujawsko_pomorskie', 'warminsko_mazurskie', 'wielkopolskie'],
+            'slaskie': ['opolskie', 'malopolskie', 'swietokrzyskie', 'lodzkie'],
+            'swietokrzyskie': ['mazowieckie', 'lodzkie', 'slaskie', 'malopolskie', 'podkarpackie', 'lubelskie'],
             'warminsko_mazurskie': ['podlaskie', 'mazowieckie', 'kujawsko_pomorskie', 'pomorskie'],
-            'wielkopolskie': ['zachodniopomorskie', 'lubuskie', 'dolnoslaskie', 'lodzkie', 'kujawsko_pomorskie'],
+            'wielkopolskie': ['zachodniopomorskie', 'lubuskie', 'dolnoslaskie', 'lodzkie', 'kujawsko_pomorskie', 'opolskie'],
             'zachodniopomorskie': ['wielkopolskie', 'lubuskie', 'pomorskie']
         }
+    
+    def get_voivodeship_as_dict(self):
+        for key, value in self.adjacent_voivodeships.items():
+            print(f"Voivodeship: {key} --> Neighbours: {value}")
 
     def get_adjacent_airports(self, voivodeship_name):
         """
@@ -148,21 +152,45 @@ class AdjacencyMatrix:
 
 if __name__ == "__main__":
     print("Topology & Adjacency Matrix initialized")
-    print(f"networkx {nx.__version__}\n")
     
     try:
         matrix = AdjacencyMatrix()
-        
-        print(f"Total airports loaded: {len(matrix.airports_data)}")
-        print(f"Total voivodeships: {len(matrix.voivodeships_data)}")
-        
-        # Print adjacency for selected voivodeships
-        for voiv_name in sorted(matrix.voivodeships_data.keys())[:3]:  # Show first 3
-            matrix.print_adjacency_for_voivodeship(voiv_name)
     
+        all_codes = sorted(matrix.airports_data.keys())
+        n = len(all_codes)
+
+        print(matrix.get_voivodeship_as_dict())
+
+        print(f"\nMACIERZ SĄSIEDZTWA LOTNISK (Na podstawie granic województw)")
+        print(f"Liczba lotnisk: {n}\n")
+
+        header = "     " + "".join([f"{code:^5}" for code in all_codes])
+        print(header)
+        print("-" * len(header))
+
+        for row_code in all_codes:
+            row_str = f"{row_code:<3} |"
+            
+            row_voiv = matrix.airports_data[row_code]['voivodeship']
+            adj_airports = matrix.get_adjacent_airports(row_voiv)
+            
+            for col_code in all_codes:
+                if row_code == col_code:
+                    cell = "  -  "
+                elif col_code in adj_airports:
+                    dist = adj_airports[col_code]['distances_from_source'].get(row_code, 0)
+                    cell = f"{int(dist):^5}" 
+                else:
+                    cell = "  .  "
+                
+                row_str += cell
+            print(row_str)
+
+        print("\nLegenda:")
+        print("  .   - Lotniska nie leżą w sąsiadujących województwach")
+        print(" [nr] - Odległość w km między lotniskami w sąsiednich województwach")
+
     except Exception as e:
         print(f"Error: {e}")
         import traceback
         traceback.print_exc()
-    
-    input("\nPress ENTER to exit...")
