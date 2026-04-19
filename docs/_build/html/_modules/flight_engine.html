@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>flight_engine &#8212; Flight Radar Simulator 1.0.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css?v=27fed22d" />
+    <script src="../_static/documentation_options.js?v=8d563738"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for flight_engine</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">random</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">flight_states</span><span class="w"> </span><span class="kn">import</span> <span class="n">FlightState</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">aircraft_generator</span><span class="w"> </span><span class="kn">import</span> <span class="n">AircraftGenerator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">topology</span><span class="w"> </span><span class="kn">import</span> <span class="n">AdjacencyMatrix</span>
+
+<div class="viewcode-block" id="FlightSimulator">
+<a class="viewcode-back" href="../modules/flight_engine.html#flight_engine.FlightSimulator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">FlightSimulator</span><span class="p">:</span>
+<div class="viewcode-block" id="FlightSimulator.__init__">
+<a class="viewcode-back" href="../modules/flight_engine.html#flight_engine.FlightSimulator.__init__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">adjacency_matrix</span><span class="p">,</span> <span class="n">max_flights</span><span class="o">=</span><span class="mi">16</span><span class="p">,</span> <span class="n">simulation_speed</span><span class="o">=</span><span class="mi">60</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize the real-time flight simulator.</span>
+<span class="sd">        :param adjacency_matrix: Instance of AdjacencyMatrix with airport coordinates.</span>
+<span class="sd">        :param max_flights: Max allowed concurrent flights.</span>
+<span class="sd">        :param simulation_speed: 1 = real-time, 60 = 1s is 1min, 3600 = 1s is 1h.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">matrix</span> <span class="o">=</span> <span class="n">adjacency_matrix</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_flights</span> <span class="o">=</span> <span class="n">max_flights</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">simulation_speed</span> <span class="o">=</span> <span class="n">simulation_speed</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">all_flights</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">generator</span> <span class="o">=</span> <span class="n">AircraftGenerator</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">available_airports</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">matrix</span><span class="o">.</span><span class="n">airports_data</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+        
+        <span class="c1"># Track the last time positions were updated</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_update_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span></div>
+
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">total_flights</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns the number of aircraft currently in the system.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">all_flights</span><span class="p">)</span>
+
+<div class="viewcode-block" id="FlightSimulator.generate_random_connected_flight">
+<a class="viewcode-back" href="../modules/flight_engine.html#flight_engine.FlightSimulator.generate_random_connected_flight">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">generate_random_connected_flight</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Creates a flight between two random airports on the map.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">total_flights</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_flights</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="n">start_node</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">available_airports</span><span class="p">)</span>
+        <span class="n">dest_node</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">available_airports</span><span class="p">)</span>
+        
+        <span class="c1"># Make sure start and destination are different</span>
+        <span class="k">while</span> <span class="n">dest_node</span> <span class="o">==</span> <span class="n">start_node</span><span class="p">:</span>
+            <span class="n">dest_node</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">available_airports</span><span class="p">)</span>
+        
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">add_flight</span><span class="p">(</span><span class="n">start_node</span><span class="p">,</span> <span class="n">dest_node</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="FlightSimulator.add_flight">
+<a class="viewcode-back" href="../modules/flight_engine.html#flight_engine.FlightSimulator.add_flight">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add_flight</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">dest</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initializes a new flight with unique ID and starting coordinates.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">total_flights</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_flights</span><span class="p">:</span>
+            <span class="c1"># Generator ensures the ID is unique</span>
+            <span class="n">new_flight</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">generator</span><span class="o">.</span><span class="n">create_aircraft</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">dest</span><span class="p">)</span>
+            <span class="n">new_flight</span><span class="o">.</span><span class="n">state</span> <span class="o">=</span> <span class="n">FlightState</span><span class="o">.</span><span class="n">IN_FLIGHT</span>
+            
+            <span class="c1"># Initial GPS position</span>
+            <span class="n">start_coords</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">matrix</span><span class="o">.</span><span class="n">airports_data</span><span class="p">[</span><span class="n">start</span><span class="p">]</span>
+            <span class="n">new_flight</span><span class="o">.</span><span class="n">current_lat</span> <span class="o">=</span> <span class="n">start_coords</span><span class="p">[</span><span class="s1">&#39;latitude&#39;</span><span class="p">]</span>
+            <span class="n">new_flight</span><span class="o">.</span><span class="n">current_lon</span> <span class="o">=</span> <span class="n">start_coords</span><span class="p">[</span><span class="s1">&#39;longitude&#39;</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">generator</span><span class="o">.</span><span class="n">actual_voivodeship</span><span class="p">(</span><span class="n">new_flight</span><span class="p">)</span>
+            
+            <span class="bp">self</span><span class="o">.</span><span class="n">all_flights</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">new_flight</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">new_flight</span>
+        <span class="k">return</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="FlightSimulator.update_positions">
+<a class="viewcode-back" href="../modules/flight_engine.html#flight_engine.FlightSimulator.update_positions">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">update_positions</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculates movement based on the actual time passed multiplied by simulation speed.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">current_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="c1"># Delta in seconds (e.g., 1.0s)</span>
+        <span class="n">delta_seconds</span> <span class="o">=</span> <span class="n">current_time</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">last_update_time</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_update_time</span> <span class="o">=</span> <span class="n">current_time</span>
+        
+        <span class="c1"># Convert to &#39;simulated&#39; hours</span>
+        <span class="c1"># (seconds * speed) / 3600 seconds in hour</span>
+        <span class="n">delta_hours</span> <span class="o">=</span> <span class="p">(</span><span class="n">delta_seconds</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">simulation_speed</span><span class="p">)</span> <span class="o">/</span> <span class="mi">3600</span>
+
+        <span class="k">for</span> <span class="n">flight</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">all_flights</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">flight</span><span class="o">.</span><span class="n">state</span> <span class="o">!=</span> <span class="n">FlightState</span><span class="o">.</span><span class="n">IN_FLIGHT</span><span class="p">:</span>
+                <span class="k">continue</span>
+
+            <span class="n">dest_data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">matrix</span><span class="o">.</span><span class="n">airports_data</span><span class="p">[</span><span class="n">flight</span><span class="o">.</span><span class="n">destination</span><span class="p">]</span>
+            <span class="n">dest_lat</span> <span class="o">=</span> <span class="n">dest_data</span><span class="p">[</span><span class="s1">&#39;latitude&#39;</span><span class="p">]</span>
+            <span class="n">dest_lon</span> <span class="o">=</span> <span class="n">dest_data</span><span class="p">[</span><span class="s1">&#39;longitude&#39;</span><span class="p">]</span>
+
+            <span class="c1"># 1. Current distance to target in km</span>
+            <span class="n">dist_to_go</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">matrix</span><span class="o">.</span><span class="n">_haversine_distance</span><span class="p">(</span>
+                <span class="n">flight</span><span class="o">.</span><span class="n">current_lat</span><span class="p">,</span> <span class="n">flight</span><span class="o">.</span><span class="n">current_lon</span><span class="p">,</span>
+                <span class="n">dest_lat</span><span class="p">,</span> <span class="n">dest_lon</span>
+            <span class="p">)</span>
+
+            <span class="c1"># 2. Distance covered in this tick</span>
+            <span class="n">step_distance</span> <span class="o">=</span> <span class="n">flight</span><span class="o">.</span><span class="n">speed</span> <span class="o">*</span> <span class="n">delta_hours</span>
+
+            <span class="c1"># 3. Handle Arrival</span>
+            <span class="k">if</span> <span class="n">dist_to_go</span> <span class="o">&lt;=</span> <span class="n">step_distance</span><span class="p">:</span>
+                <span class="n">flight</span><span class="o">.</span><span class="n">current_lat</span> <span class="o">=</span> <span class="n">dest_lat</span>
+                <span class="n">flight</span><span class="o">.</span><span class="n">current_lon</span> <span class="o">=</span> <span class="n">dest_lon</span>
+                <span class="n">flight</span><span class="o">.</span><span class="n">state</span> <span class="o">=</span> <span class="n">FlightState</span><span class="o">.</span><span class="n">ARRIVED</span>
+                <span class="n">flight</span><span class="o">.</span><span class="n">landing_date</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">generator</span><span class="o">.</span><span class="n">actual_voivodeship</span><span class="p">(</span><span class="n">flight</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">[ATC] 🛬 </span><span class="si">{</span><span class="n">flight</span><span class="o">.</span><span class="n">id</span><span class="si">}</span><span class="s2"> landed safely at </span><span class="si">{</span><span class="n">flight</span><span class="o">.</span><span class="n">destination</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># 4. Movement (Linear interpolation of coordinates)</span>
+                <span class="n">ratio</span> <span class="o">=</span> <span class="n">step_distance</span> <span class="o">/</span> <span class="n">dist_to_go</span>
+                <span class="n">flight</span><span class="o">.</span><span class="n">current_lat</span> <span class="o">+=</span> <span class="p">(</span><span class="n">dest_lat</span> <span class="o">-</span> <span class="n">flight</span><span class="o">.</span><span class="n">current_lat</span><span class="p">)</span> <span class="o">*</span> <span class="n">ratio</span>
+                <span class="n">flight</span><span class="o">.</span><span class="n">current_lon</span> <span class="o">+=</span> <span class="p">(</span><span class="n">dest_lon</span> <span class="o">-</span> <span class="n">flight</span><span class="o">.</span><span class="n">current_lon</span><span class="p">)</span> <span class="o">*</span> <span class="n">ratio</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">generator</span><span class="o">.</span><span class="n">actual_voivodeship</span><span class="p">(</span><span class="n">flight</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="FlightSimulator.cleanup_flights">
+<a class="viewcode-back" href="../modules/flight_engine.html#flight_engine.FlightSimulator.cleanup_flights">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">cleanup_flights</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Removes arrived flights and frees their IDs.&quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">flight</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">all_flights</span><span class="p">[:]:</span> <span class="c1"># Iterate on a copy to allow removal</span>
+            <span class="k">if</span> <span class="n">flight</span><span class="o">.</span><span class="n">state</span> <span class="o">==</span> <span class="n">FlightState</span><span class="o">.</span><span class="n">ARRIVED</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">generator</span><span class="o">.</span><span class="n">release_id</span><span class="p">(</span><span class="n">flight</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">all_flights</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">flight</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="FlightSimulator.get_active_flights">
+<a class="viewcode-back" href="../modules/flight_engine.html#flight_engine.FlightSimulator.get_active_flights">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_active_flights</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return all flights that are currently in the IN_FLIGHT state.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">f</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">all_flights</span> <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">state</span> <span class="o">==</span> <span class="n">FlightState</span><span class="o">.</span><span class="n">IN_FLIGHT</span><span class="p">]</span></div>
+
+    
+<div class="viewcode-block" id="FlightSimulator.get_active_flights_position">
+<a class="viewcode-back" href="../modules/flight_engine.html#flight_engine.FlightSimulator.get_active_flights_position">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_active_flights_position</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return current (latitude, longitude) positions for all active flights.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">[(</span><span class="n">f</span><span class="o">.</span><span class="n">current_lat</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">current_lon</span><span class="p">)</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">all_flights</span> <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">state</span> <span class="o">==</span> <span class="n">FlightState</span><span class="o">.</span><span class="n">IN_FLIGHT</span><span class="p">]</span></div>
+
+    
+<div class="viewcode-block" id="FlightSimulator.get_active_flights_voivodeship">
+<a class="viewcode-back" href="../modules/flight_engine.html#flight_engine.FlightSimulator.get_active_flights_voivodeship">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_active_flights_voivodeship</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">voivodeship</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return active flights whose destination is in the given voivodeship.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">f</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">all_flights</span> <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">state</span> <span class="o">==</span> <span class="n">FlightState</span><span class="o">.</span><span class="n">IN_FLIGHT</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">matrix</span><span class="o">.</span><span class="n">airports_data</span><span class="p">[</span><span class="n">f</span><span class="o">.</span><span class="n">destination</span><span class="p">][</span><span class="s1">&#39;voivodeship&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="n">voivodeship</span><span class="p">]</span></div>
+</div>
+
+
+<span class="c1"># --- MAIN EXECUTION ---</span>
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">LOG_FILE</span> <span class="o">=</span> <span class="s2">&quot;radar.log&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="c1"># 1. Load your topology</span>
+        <span class="n">matrix</span> <span class="o">=</span> <span class="n">AdjacencyMatrix</span><span class="p">()</span>
+        
+        <span class="c1"># 2. Setup Simulator (simulation_speed=60 means 1s real = 1min sim)</span>
+        <span class="c1"># Change speed to 1 for &quot;True Real Life&quot;</span>
+        <span class="n">sim</span> <span class="o">=</span> <span class="n">FlightSimulator</span><span class="p">(</span><span class="n">matrix</span><span class="p">,</span> <span class="n">max_flights</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">simulation_speed</span><span class="o">=</span><span class="mi">60</span><span class="p">)</span>
+
+        <span class="c1"># 3. Spawn initial flights</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;--- Initializing Radar ---&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">):</span>
+            <span class="n">sim</span><span class="o">.</span><span class="n">generate_random_connected_flight</span><span class="p">()</span>
+
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Simulation speed: </span><span class="si">{</span><span class="n">sim</span><span class="o">.</span><span class="n">simulation_speed</span><span class="si">}</span><span class="s2">x (1s = </span><span class="si">{</span><span class="n">sim</span><span class="o">.</span><span class="n">simulation_speed</span><span class="si">}</span><span class="s2">s of flight)&quot;</span><span class="p">)</span>
+        
+        <span class="c1"># 4. Main Loop — open log file in write mode to clear old logs on each run</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">LOG_FILE</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">,</span> <span class="n">buffering</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> <span class="k">as</span> <span class="n">log_file</span><span class="p">:</span>
+            <span class="n">log_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;=== Radar started at </span><span class="si">{</span><span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="si">}</span><span class="s2"> ===</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+                <span class="n">sim</span><span class="o">.</span><span class="n">update_positions</span><span class="p">()</span>
+                <span class="n">sim</span><span class="o">.</span><span class="n">cleanup_flights</span><span class="p">()</span>
+                
+                <span class="c1"># Print status in one line (Radar style)</span>
+                <span class="n">active</span> <span class="o">=</span> <span class="n">sim</span><span class="o">.</span><span class="n">get_active_flights</span><span class="p">()</span>
+                <span class="n">status_line</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="se">\r</span><span class="s2">[FLIGHTS: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">active</span><span class="p">)</span><span class="si">}</span><span class="s2">] &quot;</span>
+                
+                <span class="n">timestamp</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="s2">&quot;%H:%M:%S&quot;</span><span class="p">)</span>
+                <span class="n">log_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[</span><span class="si">{</span><span class="n">timestamp</span><span class="si">}</span><span class="s2">] Active flights: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">active</span><span class="p">)</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+                <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">active</span><span class="p">:</span>
+                    <span class="n">dest</span> <span class="o">=</span> <span class="n">matrix</span><span class="o">.</span><span class="n">airports_data</span><span class="p">[</span><span class="n">f</span><span class="o">.</span><span class="n">destination</span><span class="p">]</span>
+                    <span class="n">d</span> <span class="o">=</span> <span class="n">matrix</span><span class="o">.</span><span class="n">_haversine_distance</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">current_lat</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">current_lon</span><span class="p">,</span> <span class="n">dest</span><span class="p">[</span><span class="s1">&#39;latitude&#39;</span><span class="p">],</span> <span class="n">dest</span><span class="p">[</span><span class="s1">&#39;longitude&#39;</span><span class="p">])</span>
+                    <span class="n">entry</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">f</span><span class="o">.</span><span class="n">id</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">d</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">km to </span><span class="si">{</span><span class="n">f</span><span class="o">.</span><span class="n">destination</span><span class="si">}</span><span class="s2"> -&gt; from </span><span class="si">{</span><span class="n">f</span><span class="o">.</span><span class="n">starting_point</span><span class="si">}</span><span class="s2"> -&gt; started at: </span><span class="si">{</span><span class="n">f</span><span class="o">.</span><span class="n">start_date</span><span class="si">}</span><span class="s2"> -&gt; speed: </span><span class="si">{</span><span class="n">f</span><span class="o">.</span><span class="n">speed</span><span class="si">}</span><span class="s2"> -&gt; lat: </span><span class="si">{</span><span class="n">f</span><span class="o">.</span><span class="n">current_lat</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2"> - long: </span><span class="si">{</span><span class="n">f</span><span class="o">.</span><span class="n">current_lon</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2"> -&gt; state: </span><span class="si">{</span><span class="n">f</span><span class="o">.</span><span class="n">state</span><span class="si">}</span><span class="s2"> -&gt; height: </span><span class="si">{</span><span class="n">f</span><span class="o">.</span><span class="n">height</span><span class="si">}</span><span class="s2">m -&gt; voivodeship: </span><span class="si">{</span><span class="n">f</span><span class="o">.</span><span class="n">actual_voivodeship</span><span class="si">}</span><span class="s2">&quot;</span>
+                    <span class="n">status_line</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot;&lt;---- </span><span class="si">{</span><span class="n">entry</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span>
+                    <span class="n">log_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  </span><span class="si">{</span><span class="n">entry</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+                <span class="n">log_file</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">status_line</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+                <span class="c1"># Spawn new flight if there is space</span>
+                <span class="k">if</span> <span class="n">sim</span><span class="o">.</span><span class="n">total_flights</span> <span class="o">&lt;</span> <span class="n">sim</span><span class="o">.</span><span class="n">max_flights</span> <span class="ow">and</span> <span class="n">random</span><span class="o">.</span><span class="n">random</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mf">0.6</span><span class="p">:</span>
+                    <span class="n">sim</span><span class="o">.</span><span class="n">generate_random_connected_flight</span><span class="p">()</span>
+
+                <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="c1"># Refresh every second</span>
+
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">traceback</span>
+        <span class="n">traceback</span><span class="o">.</span><span class="n">print_exc</span><span class="p">()</span>
+        <span class="nb">input</span><span class="p">(</span><span class="s2">&quot;Press Enter to close...&quot;</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">KeyboardInterrupt</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Radar shut down by operator.&quot;</span><span class="p">)</span>
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../index.html">Flight Radar Simulator</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Moduły serwera</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../modules/aircraft.html">Klasa Aircraft</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/aircraft_generator.html">Moduł AircraftGenerator</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/flight_engine.html">Moduł FlightEngine</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/flight_radar.html">Moduł FlightRadar</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/actor.html">Moduł Actor</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/manager.html">Moduł Manager</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/topology.html">Moduł Topology</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+  <li><a href="index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2026, Flight Radar Team.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 9.0.4</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

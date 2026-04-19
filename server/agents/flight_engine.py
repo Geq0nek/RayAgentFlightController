@@ -31,27 +31,19 @@ class FlightSimulator:
 
     def generate_random_connected_flight(self):
         """
-        Creates a flight between two adjacent voivodeships using a loop 
-        to avoid recursion errors.
+        Creates a flight between two random airports on the map.
         """
         if self.total_flights >= self.max_flights:
             return None
 
-        neighbors = {}
-        start_node = ""
-        attempts = 0
-
-        # Try to find a starting airport that actually has neighbors with airports
-        while not neighbors and attempts < 50:
-            start_node = random.choice(self.available_airports)
-            start_voiv = self.matrix.airports_data[start_node]['voivodeship']
-            neighbors = self.matrix.get_adjacent_airports(start_voiv)
-            attempts += 1
+        start_node = random.choice(self.available_airports)
+        dest_node = random.choice(self.available_airports)
         
-        if neighbors:
-            dest_node = random.choice(list(neighbors.keys()))
-            return self.add_flight(start_node, dest_node)
-        return None
+        # Make sure start and destination are different
+        while dest_node == start_node:
+            dest_node = random.choice(self.available_airports)
+        
+        return self.add_flight(start_node, dest_node)
 
     def add_flight(self, start, dest):
         """Initializes a new flight with unique ID and starting coordinates."""
@@ -64,6 +56,7 @@ class FlightSimulator:
             start_coords = self.matrix.airports_data[start]
             new_flight.current_lat = start_coords['latitude']
             new_flight.current_lon = start_coords['longitude']
+            self.generator.actual_voivodeship(new_flight)
             
             self.all_flights.append(new_flight)
             return new_flight
@@ -105,12 +98,14 @@ class FlightSimulator:
                 flight.current_lon = dest_lon
                 flight.state = FlightState.ARRIVED
                 flight.landing_date = datetime.datetime.now()
+                self.generator.actual_voivodeship(flight)
                 print(f"\n[ATC] 🛬 {flight.id} landed safely at {flight.destination}")
             else:
                 # 4. Movement (Linear interpolation of coordinates)
                 ratio = step_distance / dist_to_go
                 flight.current_lat += (dest_lat - flight.current_lat) * ratio
                 flight.current_lon += (dest_lon - flight.current_lon) * ratio
+                self.generator.actual_voivodeship(flight)
 
     def cleanup_flights(self):
         """Removes arrived flights and frees their IDs."""
@@ -120,10 +115,20 @@ class FlightSimulator:
                 self.all_flights.remove(flight)
 
     def get_active_flights(self):
+        """Return all flights that are currently in the IN_FLIGHT state."""
         return [f for f in self.all_flights if f.state == FlightState.IN_FLIGHT]
+    
+    def get_active_flights_position(self):
+        """Return current (latitude, longitude) positions for all active flights."""
+        return [(f.current_lat, f.current_lon) for f in self.all_flights if f.state == FlightState.IN_FLIGHT]
+    
+    def get_active_flights_voivodeship(self, voivodeship):
+        """Return active flights whose destination is in the given voivodeship."""
+        return [f for f in self.all_flights if f.state == FlightState.IN_FLIGHT and self.matrix.airports_data[f.destination]['voivodeship'] == voivodeship]
 
 # --- MAIN EXECUTION ---
 if __name__ == "__main__":
+    LOG_FILE = "radar.log"
     try:
         # 1. Load your topology
         matrix = AdjacencyMatrix()
@@ -139,28 +144,35 @@ if __name__ == "__main__":
 
         print(f"Simulation speed: {sim.simulation_speed}x (1s = {sim.simulation_speed}s of flight)")
         
-        # 4. Main Loop
-        while True:
-            sim.update_positions()
-            sim.cleanup_flights()
-            
-            # Print status in one line (Radar style)
-            active = sim.get_active_flights()
-            status_line = f"\r[FLIGHTS: {len(active)}] "
-            
-            for f in active:
-                dest = matrix.airports_data[f.destination]
-                d = matrix._haversine_distance(f.current_lat, f.current_lon, dest['latitude'], dest['longitude'])
-                status_line += f"<---- {f.id}: {d:.2f}km to {f.destination} -> from {f.starting_point} -> started at: {f.start_date} -> speed: {f.speed} -> lat: {f.current_lat} - long: {f.current_lon} -> state: {f.state}\n"
-            
-            print(status_line, end="", flush=True)
+        # 4. Main Loop — open log file in write mode to clear old logs on each run
+        with open(LOG_FILE, "w", buffering=1) as log_file:
+            log_file.write(f"=== Radar started at {datetime.datetime.now()} ===\n")
+            while True:
+                sim.update_positions()
+                sim.cleanup_flights()
+                
+                # Print status in one line (Radar style)
+                active = sim.get_active_flights()
+                status_line = f"\r[FLIGHTS: {len(active)}] "
+                
+                timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+                log_file.write(f"[{timestamp}] Active flights: {len(active)}\n")
 
+                for f in active:
+                    dest = matrix.airports_data[f.destination]
+                    d = matrix._haversine_distance(f.current_lat, f.current_lon, dest['latitude'], dest['longitude'])
+                    entry = f"{f.id}: {d:.2f}km to {f.destination} -> from {f.starting_point} -> started at: {f.start_date} -> speed: {f.speed} -> lat: {f.current_lat:.4f} - long: {f.current_lon:.4f} -> state: {f.state} -> height: {f.height}m -> voivodeship: {f.actual_voivodeship}"
+                    status_line += f"<---- {entry}\n"
+                    log_file.write(f"  {entry}\n")
 
-            # Spawn new flight if there is space
-            if sim.total_flights < sim.max_flights and random.random() > 0.6:
-                sim.generate_random_connected_flight()
+                log_file.flush()
+                print(status_line, end="", flush=True)
 
-            time.sleep(1) # Refresh every second
+                # Spawn new flight if there is space
+                if sim.total_flights < sim.max_flights and random.random() > 0.6:
+                    sim.generate_random_connected_flight()
+
+                time.sleep(1) # Refresh every second
 
     except Exception as e:
         print(f"\nError: {e}")

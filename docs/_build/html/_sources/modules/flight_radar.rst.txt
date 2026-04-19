@@ -1,0 +1,7 @@
+Moduł FlightRadar
+=================
+
+.. automodule:: flight_radar
+   :members:
+   :undoc-members:
+   :show-inheritance:

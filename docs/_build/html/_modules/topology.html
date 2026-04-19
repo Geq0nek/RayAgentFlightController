@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>topology &#8212; Flight Radar Simulator 1.0.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css?v=27fed22d" />
+    <script src="../_static/documentation_options.js?v=8d563738"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for topology</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">networkx</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nx</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">yaml</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">math</span><span class="w"> </span><span class="kn">import</span> <span class="n">radians</span><span class="p">,</span> <span class="n">sin</span><span class="p">,</span> <span class="n">cos</span><span class="p">,</span> <span class="n">sqrt</span><span class="p">,</span> <span class="n">atan2</span>
+
+<div class="viewcode-block" id="AdjacencyMatrix">
+<a class="viewcode-back" href="../modules/topology.html#topology.AdjacencyMatrix">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">AdjacencyMatrix</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">base_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="vm">__file__</span><span class="p">),</span> <span class="s1">&#39;..&#39;</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">yaml_file</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">base_dir</span><span class="p">,</span> <span class="s1">&#39;configuration&#39;</span><span class="p">,</span> <span class="s1">&#39;airports_informations.yaml&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">voivodeships_data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_load_voivodeships</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">airports_data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_flatten_airports</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">adjacent_voivodeships</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_find_adjacent_voivodeships</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_load_voivodeships</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Load voivodeship data from YAML file.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">yaml_file</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;YAML file not found: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">yaml_file</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">yaml_file</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">yaml_data</span> <span class="o">=</span> <span class="n">yaml</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">Loader</span><span class="o">=</span><span class="n">yaml</span><span class="o">.</span><span class="n">FullLoader</span><span class="p">)</span>
+        
+        <span class="k">return</span> <span class="n">yaml_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;voivodeships&#39;</span><span class="p">,</span> <span class="p">{})</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_flatten_airports</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a flat list of all airports with their voivodeship info.&quot;&quot;&quot;</span>
+        <span class="n">airports</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">voiv_name</span><span class="p">,</span> <span class="n">voiv_airports</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">voivodeships_data</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">for</span> <span class="n">airport</span> <span class="ow">in</span> <span class="n">voiv_airports</span><span class="p">:</span>
+                <span class="n">airport_code</span> <span class="o">=</span> <span class="n">airport</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;iata_code&#39;</span><span class="p">,</span> <span class="s1">&#39;UNKNOWN&#39;</span><span class="p">)</span>
+                <span class="n">airports</span><span class="p">[</span><span class="n">airport_code</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                    <span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="n">airport</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;name&#39;</span><span class="p">,</span> <span class="s1">&#39;Unknown&#39;</span><span class="p">),</span>
+                    <span class="s1">&#39;latitude&#39;</span><span class="p">:</span> <span class="n">airport</span><span class="p">[</span><span class="s1">&#39;location&#39;</span><span class="p">][</span><span class="s1">&#39;latitude&#39;</span><span class="p">],</span>
+                    <span class="s1">&#39;longitude&#39;</span><span class="p">:</span> <span class="n">airport</span><span class="p">[</span><span class="s1">&#39;location&#39;</span><span class="p">][</span><span class="s1">&#39;longitude&#39;</span><span class="p">],</span>
+                    <span class="s1">&#39;voivodeship&#39;</span><span class="p">:</span> <span class="n">voiv_name</span>
+                <span class="p">}</span>
+        <span class="k">return</span> <span class="n">airports</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_haversine_distance</span><span class="p">(</span><span class="n">lat1</span><span class="p">,</span> <span class="n">lon1</span><span class="p">,</span> <span class="n">lat2</span><span class="p">,</span> <span class="n">lon2</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Calculate distance between two points in km using Haversine formula.&quot;&quot;&quot;</span>
+        <span class="n">R</span> <span class="o">=</span> <span class="mi">6371</span>  <span class="c1"># Earth&#39;s radius in km</span>
+        
+        <span class="n">lat1</span><span class="p">,</span> <span class="n">lon1</span><span class="p">,</span> <span class="n">lat2</span><span class="p">,</span> <span class="n">lon2</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="n">radians</span><span class="p">,</span> <span class="p">[</span><span class="n">lat1</span><span class="p">,</span> <span class="n">lon1</span><span class="p">,</span> <span class="n">lat2</span><span class="p">,</span> <span class="n">lon2</span><span class="p">])</span>
+        <span class="n">dlat</span> <span class="o">=</span> <span class="n">lat2</span> <span class="o">-</span> <span class="n">lat1</span>
+        <span class="n">dlon</span> <span class="o">=</span> <span class="n">lon2</span> <span class="o">-</span> <span class="n">lon1</span>
+        
+        <span class="n">a</span> <span class="o">=</span> <span class="n">sin</span><span class="p">(</span><span class="n">dlat</span><span class="o">/</span><span class="mi">2</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">cos</span><span class="p">(</span><span class="n">lat1</span><span class="p">)</span> <span class="o">*</span> <span class="n">cos</span><span class="p">(</span><span class="n">lat2</span><span class="p">)</span> <span class="o">*</span> <span class="n">sin</span><span class="p">(</span><span class="n">dlon</span><span class="o">/</span><span class="mi">2</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span>
+        <span class="n">c</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">atan2</span><span class="p">(</span><span class="n">sqrt</span><span class="p">(</span><span class="n">a</span><span class="p">),</span> <span class="n">sqrt</span><span class="p">(</span><span class="mi">1</span><span class="o">-</span><span class="n">a</span><span class="p">))</span>
+        
+        <span class="k">return</span> <span class="n">R</span> <span class="o">*</span> <span class="n">c</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_find_adjacent_voivodeships</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return static adjacency map of Polish voivodeships.&quot;&quot;&quot;</span>
+        <span class="c1"># Static adjacency based on geographical borders in Poland</span>
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="s1">&#39;dolnoslaskie&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;opolskie&#39;</span><span class="p">,</span> <span class="s1">&#39;wielkopolskie&#39;</span><span class="p">,</span> <span class="s1">&#39;lubuskie&#39;</span><span class="p">],</span>
+            <span class="s1">&#39;kujawsko_pomorskie&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;pomorskie&#39;</span><span class="p">,</span> <span class="s1">&#39;warminsko_mazurskie&#39;</span><span class="p">,</span> <span class="s1">&#39;mazowieckie&#39;</span><span class="p">,</span> <span class="s1">&#39;wielkopolskie&#39;</span><span class="p">,</span> <span class="s1">&#39;lodzkie&#39;</span><span class="p">],</span>
+            <span class="s1">&#39;lubelskie&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;mazowieckie&#39;</span><span class="p">,</span> <span class="s1">&#39;podlaskie&#39;</span><span class="p">,</span> <span class="s1">&#39;swietokrzyskie&#39;</span><span class="p">,</span> <span class="s1">&#39;podkarpackie&#39;</span><span class="p">],</span>
+            <span class="s1">&#39;lubuskie&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;wielkopolskie&#39;</span><span class="p">,</span> <span class="s1">&#39;dolnoslaskie&#39;</span><span class="p">,</span> <span class="s1">&#39;zachodniopomorskie&#39;</span><span class="p">],</span>
+            <span class="s1">&#39;lodzkie&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;mazowieckie&#39;</span><span class="p">,</span> <span class="s1">&#39;swietokrzyskie&#39;</span><span class="p">,</span> <span class="s1">&#39;opolskie&#39;</span><span class="p">,</span> <span class="s1">&#39;wielkopolskie&#39;</span><span class="p">,</span> <span class="s1">&#39;slaskie&#39;</span><span class="p">,</span> <span class="s1">&#39;kujawsko_pomorskie&#39;</span><span class="p">],</span>
+            <span class="s1">&#39;malopolskie&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;slaskie&#39;</span><span class="p">,</span> <span class="s1">&#39;swietokrzyskie&#39;</span><span class="p">,</span> <span class="s1">&#39;podkarpackie&#39;</span><span class="p">],</span>
+            <span class="s1">&#39;mazowieckie&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;podlaskie&#39;</span><span class="p">,</span> <span class="s1">&#39;warminsko_mazurskie&#39;</span><span class="p">,</span> <span class="s1">&#39;kujawsko_pomorskie&#39;</span><span class="p">,</span> <span class="s1">&#39;lodzkie&#39;</span><span class="p">,</span> <span class="s1">&#39;swietokrzyskie&#39;</span><span class="p">,</span> <span class="s1">&#39;lubelskie&#39;</span><span class="p">],</span>
+            <span class="s1">&#39;opolskie&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;slaskie&#39;</span><span class="p">,</span> <span class="s1">&#39;dolnoslaskie&#39;</span><span class="p">,</span> <span class="s1">&#39;lodzkie&#39;</span><span class="p">,</span> <span class="s1">&#39;wielkopolskie&#39;</span><span class="p">],</span>
+            <span class="s1">&#39;podkarpackie&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;malopolskie&#39;</span><span class="p">,</span> <span class="s1">&#39;swietokrzyskie&#39;</span><span class="p">,</span> <span class="s1">&#39;lubelskie&#39;</span><span class="p">],</span>
+            <span class="s1">&#39;podlaskie&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;warminsko_mazurskie&#39;</span><span class="p">,</span> <span class="s1">&#39;mazowieckie&#39;</span><span class="p">,</span> <span class="s1">&#39;lubelskie&#39;</span><span class="p">],</span>
+            <span class="s1">&#39;pomorskie&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;zachodniopomorskie&#39;</span><span class="p">,</span> <span class="s1">&#39;kujawsko_pomorskie&#39;</span><span class="p">,</span> <span class="s1">&#39;warminsko_mazurskie&#39;</span><span class="p">,</span> <span class="s1">&#39;wielkopolskie&#39;</span><span class="p">],</span>
+            <span class="s1">&#39;slaskie&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;opolskie&#39;</span><span class="p">,</span> <span class="s1">&#39;malopolskie&#39;</span><span class="p">,</span> <span class="s1">&#39;swietokrzyskie&#39;</span><span class="p">,</span> <span class="s1">&#39;lodzkie&#39;</span><span class="p">],</span>
+            <span class="s1">&#39;swietokrzyskie&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;mazowieckie&#39;</span><span class="p">,</span> <span class="s1">&#39;lodzkie&#39;</span><span class="p">,</span> <span class="s1">&#39;slaskie&#39;</span><span class="p">,</span> <span class="s1">&#39;malopolskie&#39;</span><span class="p">,</span> <span class="s1">&#39;podkarpackie&#39;</span><span class="p">,</span> <span class="s1">&#39;lubelskie&#39;</span><span class="p">],</span>
+            <span class="s1">&#39;warminsko_mazurskie&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;podlaskie&#39;</span><span class="p">,</span> <span class="s1">&#39;mazowieckie&#39;</span><span class="p">,</span> <span class="s1">&#39;kujawsko_pomorskie&#39;</span><span class="p">,</span> <span class="s1">&#39;pomorskie&#39;</span><span class="p">],</span>
+            <span class="s1">&#39;wielkopolskie&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;zachodniopomorskie&#39;</span><span class="p">,</span> <span class="s1">&#39;lubuskie&#39;</span><span class="p">,</span> <span class="s1">&#39;dolnoslaskie&#39;</span><span class="p">,</span> <span class="s1">&#39;lodzkie&#39;</span><span class="p">,</span> <span class="s1">&#39;kujawsko_pomorskie&#39;</span><span class="p">,</span> <span class="s1">&#39;opolskie&#39;</span><span class="p">],</span>
+            <span class="s1">&#39;zachodniopomorskie&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;wielkopolskie&#39;</span><span class="p">,</span> <span class="s1">&#39;lubuskie&#39;</span><span class="p">,</span> <span class="s1">&#39;pomorskie&#39;</span><span class="p">]</span>
+        <span class="p">}</span>
+    
+<div class="viewcode-block" id="AdjacencyMatrix.get_voivodeship_as_dict">
+<a class="viewcode-back" href="../modules/topology.html#topology.AdjacencyMatrix.get_voivodeship_as_dict">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_voivodeship_as_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">adjacent_voivodeships</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Voivodeship: </span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2"> --&gt; Neighbours: </span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="AdjacencyMatrix.get_adjacent_airports">
+<a class="viewcode-back" href="../modules/topology.html#topology.AdjacencyMatrix.get_adjacent_airports">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_adjacent_airports</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">voivodeship_name</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Get all airports in adjacent voivodeships with their distances from airports in given voivodeship.</span>
+<span class="sd">        Returns: {airport_code: {&#39;name&#39;: ..., &#39;distances&#39;: {neighbor_airport: km, ...}, &#39;voivodeship&#39;: ...}}</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">voivodeship_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">adjacent_voivodeships</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{}</span>
+        
+        <span class="n">result</span> <span class="o">=</span> <span class="p">{}</span>
+        
+        <span class="c1"># Get airports in the given voivodeship</span>
+        <span class="n">source_airports</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">voivodeships_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">voivodeship_name</span><span class="p">,</span> <span class="p">[])</span>
+        <span class="n">source_codes</span> <span class="o">=</span> <span class="p">[</span><span class="n">a</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;iata_code&#39;</span><span class="p">)</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">source_airports</span><span class="p">]</span>
+        
+        <span class="c1"># Get adjacent voivodeships</span>
+        <span class="n">adjacent_voivs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">adjacent_voivodeships</span><span class="p">[</span><span class="n">voivodeship_name</span><span class="p">]</span>
+        
+        <span class="c1"># For each adjacent voivodeship, get its airports</span>
+        <span class="k">for</span> <span class="n">adj_voiv</span> <span class="ow">in</span> <span class="n">adjacent_voivs</span><span class="p">:</span>
+            <span class="n">adj_airports</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">voivodeships_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">adj_voiv</span><span class="p">,</span> <span class="p">[])</span>
+            
+            <span class="k">for</span> <span class="n">adj_airport</span> <span class="ow">in</span> <span class="n">adj_airports</span><span class="p">:</span>
+                <span class="n">adj_code</span> <span class="o">=</span> <span class="n">adj_airport</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;iata_code&#39;</span><span class="p">,</span> <span class="s1">&#39;UNKNOWN&#39;</span><span class="p">)</span>
+                <span class="n">adj_lat</span> <span class="o">=</span> <span class="n">adj_airport</span><span class="p">[</span><span class="s1">&#39;location&#39;</span><span class="p">][</span><span class="s1">&#39;latitude&#39;</span><span class="p">]</span>
+                <span class="n">adj_lon</span> <span class="o">=</span> <span class="n">adj_airport</span><span class="p">[</span><span class="s1">&#39;location&#39;</span><span class="p">][</span><span class="s1">&#39;longitude&#39;</span><span class="p">]</span>
+                
+                <span class="c1"># Calculate distances from all source airports to this adjacent airport</span>
+                <span class="n">distances</span> <span class="o">=</span> <span class="p">{}</span>
+                <span class="k">for</span> <span class="n">source_airport</span> <span class="ow">in</span> <span class="n">source_airports</span><span class="p">:</span>
+                    <span class="n">src_code</span> <span class="o">=</span> <span class="n">source_airport</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;iata_code&#39;</span><span class="p">,</span> <span class="s1">&#39;UNKNOWN&#39;</span><span class="p">)</span>
+                    <span class="n">src_lat</span> <span class="o">=</span> <span class="n">source_airport</span><span class="p">[</span><span class="s1">&#39;location&#39;</span><span class="p">][</span><span class="s1">&#39;latitude&#39;</span><span class="p">]</span>
+                    <span class="n">src_lon</span> <span class="o">=</span> <span class="n">source_airport</span><span class="p">[</span><span class="s1">&#39;location&#39;</span><span class="p">][</span><span class="s1">&#39;longitude&#39;</span><span class="p">]</span>
+                    
+                    <span class="n">dist</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_haversine_distance</span><span class="p">(</span><span class="n">src_lat</span><span class="p">,</span> <span class="n">src_lon</span><span class="p">,</span> <span class="n">adj_lat</span><span class="p">,</span> <span class="n">adj_lon</span><span class="p">)</span>
+                    <span class="n">distances</span><span class="p">[</span><span class="n">src_code</span><span class="p">]</span> <span class="o">=</span> <span class="nb">round</span><span class="p">(</span><span class="n">dist</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+                
+                <span class="n">result</span><span class="p">[</span><span class="n">adj_code</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                    <span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="n">adj_airport</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;name&#39;</span><span class="p">,</span> <span class="s1">&#39;Unknown&#39;</span><span class="p">),</span>
+                    <span class="s1">&#39;voivodeship&#39;</span><span class="p">:</span> <span class="n">adj_voiv</span><span class="p">,</span>
+                    <span class="s1">&#39;latitude&#39;</span><span class="p">:</span> <span class="n">adj_lat</span><span class="p">,</span>
+                    <span class="s1">&#39;longitude&#39;</span><span class="p">:</span> <span class="n">adj_lon</span><span class="p">,</span>
+                    <span class="s1">&#39;distances_from_source&#39;</span><span class="p">:</span> <span class="n">distances</span>  <span class="c1"># distances from each airport in source voiv</span>
+                <span class="p">}</span>
+        
+        <span class="k">return</span> <span class="n">result</span></div>
+
+
+<div class="viewcode-block" id="AdjacencyMatrix.print_adjacency_for_voivodeship">
+<a class="viewcode-back" href="../modules/topology.html#topology.AdjacencyMatrix.print_adjacency_for_voivodeship">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">print_adjacency_for_voivodeship</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">voivodeship_name</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Pretty print adjacency info for a voivodeship.&quot;&quot;&quot;</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="si">{</span><span class="s1">&#39;=&#39;</span><span class="o">*</span><span class="mi">70</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Voivodeship: </span><span class="si">{</span><span class="n">voivodeship_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="s1">&#39;=&#39;</span><span class="o">*</span><span class="mi">70</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        
+        <span class="n">adjacent_voivs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">adjacent_voivodeships</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">voivodeship_name</span><span class="p">,</span> <span class="p">[])</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Adjacent voivodeships: </span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">adjacent_voivs</span><span class="p">)</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">adjacent_voivs</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;None&#39;</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        
+        <span class="n">source_airports</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">voivodeships_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">voivodeship_name</span><span class="p">,</span> <span class="p">[])</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Airports in </span><span class="si">{</span><span class="n">voivodeship_name</span><span class="si">}</span><span class="s2">:&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">airport</span> <span class="ow">in</span> <span class="n">source_airports</span><span class="p">:</span>
+            <span class="n">code</span> <span class="o">=</span> <span class="n">airport</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;iata_code&#39;</span><span class="p">,</span> <span class="s1">&#39;UNKNOWN&#39;</span><span class="p">)</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="n">airport</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;name&#39;</span><span class="p">,</span> <span class="s1">&#39;Unknown&#39;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  • </span><span class="si">{</span><span class="n">code</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        
+        <span class="n">adjacent_airports</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_adjacent_airports</span><span class="p">(</span><span class="n">voivodeship_name</span><span class="p">)</span>
+        
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">adjacent_airports</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">No adjacent voivodeships with airports.&quot;</span><span class="p">)</span>
+            <span class="k">return</span>
+        
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Adjacent airports (with distances from </span><span class="si">{</span><span class="n">voivodeship_name</span><span class="si">}</span><span class="s2"> airports):&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">adj_code</span><span class="p">,</span> <span class="n">info</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">adjacent_airports</span><span class="o">.</span><span class="n">items</span><span class="p">()):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">  [</span><span class="si">{</span><span class="n">info</span><span class="p">[</span><span class="s1">&#39;voivodeship&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">] </span><span class="si">{</span><span class="n">adj_code</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">info</span><span class="p">[</span><span class="s1">&#39;name&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">src_code</span><span class="p">,</span> <span class="n">distance</span> <span class="ow">in</span> <span class="n">info</span><span class="p">[</span><span class="s1">&#39;distances_from_source&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;      → From </span><span class="si">{</span><span class="n">src_code</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">distance</span><span class="si">}</span><span class="s2"> km&quot;</span><span class="p">)</span></div>
+</div>
+
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Topology &amp; Adjacency Matrix initialized&quot;</span><span class="p">)</span>
+    
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">matrix</span> <span class="o">=</span> <span class="n">AdjacencyMatrix</span><span class="p">()</span>
+    
+        <span class="n">all_codes</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">matrix</span><span class="o">.</span><span class="n">airports_data</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">all_codes</span><span class="p">)</span>
+
+        <span class="nb">print</span><span class="p">(</span><span class="n">matrix</span><span class="o">.</span><span class="n">get_voivodeship_as_dict</span><span class="p">())</span>
+
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">MACIERZ SĄSIEDZTWA LOTNISK (Na podstawie granic województw)&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Liczba lotnisk: </span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="n">header</span> <span class="o">=</span> <span class="s2">&quot;     &quot;</span> <span class="o">+</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">code</span><span class="si">:</span><span class="s2">^5</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">code</span> <span class="ow">in</span> <span class="n">all_codes</span><span class="p">])</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">header</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;-&quot;</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">header</span><span class="p">))</span>
+
+        <span class="k">for</span> <span class="n">row_code</span> <span class="ow">in</span> <span class="n">all_codes</span><span class="p">:</span>
+            <span class="n">row_str</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">row_code</span><span class="si">:</span><span class="s2">&lt;3</span><span class="si">}</span><span class="s2"> |&quot;</span>
+            
+            <span class="n">row_voiv</span> <span class="o">=</span> <span class="n">matrix</span><span class="o">.</span><span class="n">airports_data</span><span class="p">[</span><span class="n">row_code</span><span class="p">][</span><span class="s1">&#39;voivodeship&#39;</span><span class="p">]</span>
+            <span class="n">adj_airports</span> <span class="o">=</span> <span class="n">matrix</span><span class="o">.</span><span class="n">get_adjacent_airports</span><span class="p">(</span><span class="n">row_voiv</span><span class="p">)</span>
+            
+            <span class="k">for</span> <span class="n">col_code</span> <span class="ow">in</span> <span class="n">all_codes</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">row_code</span> <span class="o">==</span> <span class="n">col_code</span><span class="p">:</span>
+                    <span class="n">cell</span> <span class="o">=</span> <span class="s2">&quot;  -  &quot;</span>
+                <span class="k">elif</span> <span class="n">col_code</span> <span class="ow">in</span> <span class="n">adj_airports</span><span class="p">:</span>
+                    <span class="n">dist</span> <span class="o">=</span> <span class="n">adj_airports</span><span class="p">[</span><span class="n">col_code</span><span class="p">][</span><span class="s1">&#39;distances_from_source&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">row_code</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+                    <span class="n">cell</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">int</span><span class="p">(</span><span class="n">dist</span><span class="p">)</span><span class="si">:</span><span class="s2">^5</span><span class="si">}</span><span class="s2">&quot;</span> 
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">cell</span> <span class="o">=</span> <span class="s2">&quot;  .  &quot;</span>
+                
+                <span class="n">row_str</span> <span class="o">+=</span> <span class="n">cell</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">row_str</span><span class="p">)</span>
+
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Legenda:&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;  .   - Lotniska nie leżą w sąsiadujących województwach&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot; [nr] - Odległość w km między lotniskami w sąsiednich województwach&quot;</span><span class="p">)</span>
+
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">traceback</span>
+        <span class="n">traceback</span><span class="o">.</span><span class="n">print_exc</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../index.html">Flight Radar Simulator</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Moduły serwera</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../modules/aircraft.html">Klasa Aircraft</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/aircraft_generator.html">Moduł AircraftGenerator</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/flight_engine.html">Moduł FlightEngine</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/flight_radar.html">Moduł FlightRadar</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/actor.html">Moduł Actor</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/manager.html">Moduł Manager</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../modules/topology.html">Moduł Topology</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+  <li><a href="index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2026, Flight Radar Team.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 9.0.4</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>
