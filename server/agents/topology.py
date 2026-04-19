@@ -54,20 +54,20 @@ class AdjacencyMatrix:
         # Static adjacency based on geographical borders in Poland
         return {
             'dolnoslaskie': ['opolskie', 'wielkopolskie', 'lubuskie'],
-            'kujawsko_pomorskie': ['pomorskie', 'warminsko_mazurskie', 'mazowieckie', 'wielkopolskie'],
+            'kujawsko_pomorskie': ['pomorskie', 'warminsko_mazurskie', 'mazowieckie', 'wielkopolskie', 'lodzkie'],
             'lubelskie': ['mazowieckie', 'podlaskie', 'swietokrzyskie', 'podkarpackie'],
             'lubuskie': ['wielkopolskie', 'dolnoslaskie', 'zachodniopomorskie'],
-            'lodzkie': ['mazowieckie', 'swietokrzyskie', 'opolskie', 'wielkopolskie'],
+            'lodzkie': ['mazowieckie', 'swietokrzyskie', 'opolskie', 'wielkopolskie', 'slaskie', 'kujawsko_pomorskie'],
             'malopolskie': ['slaskie', 'swietokrzyskie', 'podkarpackie'],
             'mazowieckie': ['podlaskie', 'warminsko_mazurskie', 'kujawsko_pomorskie', 'lodzkie', 'swietokrzyskie', 'lubelskie'],
-            'opolskie': ['slaskie', 'dolnoslaskie', 'lodzkie', 'swietokrzyskie'],
-            'podkarpackie': ['malopolskie', 'swietokrzyskie', 'lubelskie', 'podlaskie'],
-            'podlaskie': ['warminsko_mazurskie', 'mazowieckie', 'lubelskie', 'podkarpackie'],
-            'pomorskie': ['zachodniopomorskie', 'kujawsko_pomorskie', 'warminsko_mazurskie'],
-            'slaskie': ['opolskie', 'malopolskie', 'swietokrzyskie', 'lodzkie', 'dolnoslaskie'],
-            'swietokrzyskie': ['mazowieckie', 'lodzkie', 'opolskie', 'slaskie', 'malopolskie', 'podkarpackie', 'lubelskie'],
+            'opolskie': ['slaskie', 'dolnoslaskie', 'lodzkie', 'wielkopolskie'],
+            'podkarpackie': ['malopolskie', 'swietokrzyskie', 'lubelskie'],
+            'podlaskie': ['warminsko_mazurskie', 'mazowieckie', 'lubelskie'],
+            'pomorskie': ['zachodniopomorskie', 'kujawsko_pomorskie', 'warminsko_mazurskie', 'wielkopolskie'],
+            'slaskie': ['opolskie', 'malopolskie', 'swietokrzyskie', 'lodzkie'],
+            'swietokrzyskie': ['mazowieckie', 'lodzkie', 'slaskie', 'malopolskie', 'podkarpackie', 'lubelskie'],
             'warminsko_mazurskie': ['podlaskie', 'mazowieckie', 'kujawsko_pomorskie', 'pomorskie'],
-            'wielkopolskie': ['zachodniopomorskie', 'lubuskie', 'dolnoslaskie', 'lodzkie', 'kujawsko_pomorskie'],
+            'wielkopolskie': ['zachodniopomorskie', 'lubuskie', 'dolnoslaskie', 'lodzkie', 'kujawsko_pomorskie', 'opolskie'],
             'zachodniopomorskie': ['wielkopolskie', 'lubuskie', 'pomorskie']
         }
     

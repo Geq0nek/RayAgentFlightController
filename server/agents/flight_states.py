@@ -7,3 +7,4 @@ class FlightState(Enum):
     LANDING = auto()     
     ARRIVED = auto()     
     CANCELLED = auto()   
+    DELAYED = auto()

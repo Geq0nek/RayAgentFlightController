@@ -151,9 +151,10 @@ if __name__ == "__main__":
             for f in active:
                 dest = matrix.airports_data[f.destination]
                 d = matrix._haversine_distance(f.current_lat, f.current_lon, dest['latitude'], dest['longitude'])
-                status_line += f"| {f.id}: {d:.2f}km to {f.destination} "
+                status_line += f"<---- {f.id}: {d:.2f}km to {f.destination} -> from {f.starting_point} -> started at: {f.start_date} -> speed: {f.speed} -> lat: {f.current_lat} - long: {f.current_lon} -> state: {f.state}\n"
             
             print(status_line, end="", flush=True)
+
 
             # Spawn new flight if there is space
             if sim.total_flights < sim.max_flights and random.random() > 0.6:
