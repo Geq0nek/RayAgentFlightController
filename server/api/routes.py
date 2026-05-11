@@ -1,16 +1,16 @@
 """
-routes.py — Flask REST API dla systemu ATC.
+routes.py — Flask REST API for the ATC system.
 
-Endpointy
+Endpoints
 ---------
-GET  /api/status          → status całej sieci (tick, sim_time, liczba lotów)
-GET  /api/flights         → wszystkie aktywne loty (snapshoty)
-GET  /api/flights/<voiv>  → loty śledzone przez konkretną wieżę
-GET  /api/voivodeships    → lista województw z liczbą lotów
-GET  /api/log/<voiv>      → ostatnie 50 wpisów z logu wieży
-POST /api/spawn           → ręczny spawn lotu  { "start": "WAW", "dest": "KRK" }
-POST /api/control/start   → uruchom symulację
-POST /api/control/stop    → zatrzymaj symulację
+GET  /api/status          → entire network status (tick, sim_time, number of flights)
+GET  /api/flights         → all active flights (snapshots)
+GET  /api/flights/<voiv>  → flights tracked by a specific tower
+GET  /api/voivodeships    → list of voivodeships with number of flights
+GET  /api/log/<voiv>      → last 50 tower log entries
+POST /api/spawn           → manual flight spawn  { "start": "WAW", "dest": "KRK" }
+POST /api/control/start   → start simulation
+POST /api/control/stop    → stop simulation
 """
 
 from __future__ import annotations
@@ -22,24 +22,24 @@ api = Blueprint("api", __name__, url_prefix="/api")
 
 
 def _manager():
-    """Pobierz uchwyt do ATCManager z kontekstu aplikacji."""
+    """Get handle to ATCManager from application context."""
     return current_app.config["ATC_MANAGER"]
 
 
 # ---------------------------------------------------------------------------
-# Sieć / status
+# Network / status
 # ---------------------------------------------------------------------------
 
 @api.route("/status")
 def get_status():
-    """Zbiorczy status sieci: tick, sim_time, liczba aktywnych lotów."""
+    """Aggregate network status: tick, sim_time, number of active flights."""
     status = ray.get(_manager().get_network_status.remote())
     return jsonify(status)
 
 
 @api.route("/voivodeships")
 def get_voivodeships():
-    """Lista województw z nazwą i liczbą aktualnie śledzonych lotów."""
+    """List of voivodeships with name and current number of tracked flights."""
     status = ray.get(_manager().get_network_status.remote())
     result = [
         {
@@ -53,12 +53,12 @@ def get_voivodeships():
 
 
 # ---------------------------------------------------------------------------
-# Loty
+# Flights
 # ---------------------------------------------------------------------------
 
 @api.route("/flights")
 def get_all_flights():
-    """Snapshoty wszystkich aktywnych lotów w sieci."""
+    """Snapshots of all active flights in the network."""
     flights = ray.get(_manager().get_all_flights.remote())
     return jsonify(flights)
 
@@ -66,20 +66,20 @@ def get_all_flights():
 @api.route("/flights/<voivodeship>")
 def get_flights_by_voivodeship(voivodeship: str):
     """
-    Loty śledzone przez konkretną wieżę.
-    Parametr voivodeship to klucz ASCII-lowercase (np. 'mazowieckie').
+    Flights tracked by a specific tower.
+    Voivodeship parameter is an ASCII-lowercase key (e.g., 'mazowieckie').
     """
     flights = ray.get(_manager().get_flights_by_voivodeship.remote(voivodeship))
     return jsonify(flights)
 
 
 # ---------------------------------------------------------------------------
-# Logi agentów
+# Agent logs
 # ---------------------------------------------------------------------------
 
 @api.route("/log/<voivodeship>")
 def get_voivodeship_log(voivodeship: str):
-    """Ostatnie 50 wpisów z logu wieży ATC danego województwa."""
+    """Last 50 log entries from the ATC tower of given voivodeship."""
     n = request.args.get("n", 50, type=int)
     log = ray.get(_manager().get_voivodeship_log.remote(voivodeship, n))
     return jsonify({"voivodeship": voivodeship, "log": log})
@@ -87,21 +87,21 @@ def get_voivodeship_log(voivodeship: str):
 
 @api.route("/reports")
 def get_tick_reports():
-    """Ostatnie tick-raporty całej sieci (do strony historii)."""
+    """Last tick-reports from the entire network (for the history page)."""
     n = request.args.get("n", 30, type=int)
     reports = ray.get(_manager().get_last_tick_reports.remote(n))
     return jsonify(reports)
 
 
 # ---------------------------------------------------------------------------
-# Sterowanie
+# Control
 # ---------------------------------------------------------------------------
 
 @api.route("/spawn", methods=["POST"])
 def spawn_flight():
     """
-    Ręczny spawn lotu.
-    Body JSON: { "start": "WAW", "dest": "KRK" }
+    Manual flight spawn.
+    JSON body: { "start": "WAW", "dest": "KRK" }
     """
     data = request.get_json(force=True, silent=True) or {}
     start = data.get("start", "").strip().upper()
@@ -123,20 +123,20 @@ def spawn_flight():
 
 @api.route("/control/start", methods=["POST"])
 def control_start():
-    """Uruchamia pętlę symulacji."""
+    """Starts the simulation loop."""
     result = ray.get(_manager().start.remote())
     return jsonify({"result": result})
 
 
 @api.route("/control/stop", methods=["POST"])
 def control_stop():
-    """Zatrzymuje pętlę symulacji."""
+    """Stops the simulation loop."""
     result = ray.get(_manager().stop.remote())
     return jsonify({"result": result})
 
 
 @api.route("/airports")
 def get_airports():
-    """Lista dostępnych kodów IATA lotnisk."""
+    """List of available IATA airport codes."""
     airports = ray.get(_manager().get_available_airports.remote())
     return jsonify(airports)

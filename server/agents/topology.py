@@ -161,8 +161,8 @@ if __name__ == "__main__":
 
         print(matrix.get_voivodeship_as_dict())
 
-        print(f"\nMACIERZ SĄSIEDZTWA LOTNISK (Na podstawie granic województw)")
-        print(f"Liczba lotnisk: {n}\n")
+        print(f"\nAIRPORT ADJACENCY MATRIX (Based on voivodeship boundaries)")
+        print(f"Number of airports: {n}\n")
 
         header = "     " + "".join([f"{code:^5}" for code in all_codes])
         print(header)
@@ -187,8 +187,8 @@ if __name__ == "__main__":
             print(row_str)
 
         print("\nLegenda:")
-        print("  .   - Lotniska nie leżą w sąsiadujących województwach")
-        print(" [nr] - Odległość w km między lotniskami w sąsiednich województwach")
+        print("  .   - Airports do not lie in adjacent voivodeships")
+        print(" [nr] - Distance in km between airports in adjacent voivodeships")
 
     except Exception as e:
         print(f"Error: {e}")

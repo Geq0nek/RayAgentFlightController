@@ -66,23 +66,23 @@ function stopRadarPolling() {
 }
 
 // ============================================================
-// Strona historii — raporty taktowe i logi agentów
+// History page — tactical reports and agent logs
 // ============================================================
 async function loadHistoryPage() {
     const container = document.getElementById('history-container');
     if (!container) return;
-    container.innerHTML = '<p style="color:#888">Ładowanie...</p>';
+    container.innerHTML = '<p style="color:#888">Loading...</p>';
 
     let reports = [];
     try {
         reports = await ATC_API.getTickReports(20);
     } catch (e) {
-        container.innerHTML = `<p style="color:#c0392b">Błąd połączenia z API: ${e.message}</p>`;
+        container.innerHTML = `<p style="color:#c0392b">API connection error: ${e.message}</p>`;
         return;
     }
 
     if (!reports || reports.length === 0) {
-        container.innerHTML = '<p style="color:#888">Brak raportów. Uruchom symulację.</p>';
+        container.innerHTML = '<p style="color:#888">No reports. Start simulation.</p>';
         return;
     }
 

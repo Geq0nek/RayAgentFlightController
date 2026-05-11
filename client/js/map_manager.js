@@ -37,10 +37,10 @@ class MapManager {
         this._voivColors    = {};      // voivodeship_key → kolor hex
         this._towerMarkers  = {};      // voivodeship_key → L.Marker (wieże)
         this._voivPolygons  = {};      // voivodeship_key → L.GeoJSON layer
-        this._selectedVoiv  = null;    // aktualnie podświetlone województwo
-        this._voivData      = {};      // voivodeship_key → dane z YAML (lotniska)
+        this._selectedVoiv  = null;    // currently highlighted voivodeship
+        this._voivData      = {};      // voivodeship_key → data from YAML (airports)
 
-        // Paleta kolorów dla wież (16 województw)
+        // Color palette for towers (16 voivodeships)
         this._palette = [
             "#e74c3c","#3498db","#2ecc71","#f39c12","#9b59b6",
             "#1abc9c","#e67e22","#34495e","#e91e63","#00bcd4",
@@ -59,7 +59,7 @@ class MapManager {
             if (!response.ok) throw new Error("GeoJSON not found");
             const data = await response.json();
 
-            // Mapowanie GeoJSON adm1_name → klucz topologii (taki sam jak w actor.py)
+            // Mapping GeoJSON adm1_name → topology key (same as in actor.py)
             const geoToKey = {
                 "Dolnośląskie":        "dolnoslaskie",
                 "Kujawsko-Pomorskie":  "kujawsko_pomorskie",
@@ -79,7 +79,7 @@ class MapManager {
                 "Zachodniopomorskie":  "zachodniopomorskie",
             };
 
-            // Przypisz kolor każdemu województwu
+            // Assign color to each voivodeship
             const keys = Object.values(geoToKey);
             keys.forEach((k, i) => { this._voivColors[k] = this._palette[i % this._palette.length]; });
 
@@ -98,7 +98,7 @@ class MapManager {
 
                 this._voivPolygons[key] = layer;
 
-                // Kliknięcie w województwo → pokaż panel agenta
+                // Click on voivodeship → show agent panel
                 layer.on('click', () => this._showAgentPanel(key));
             });
 
@@ -120,7 +120,7 @@ class MapManager {
                 airports.forEach(airport => {
                     const color = this._voivColors[voivodeship] || "#555";
 
-                    // Kolorowa wieża kontrolna (div icon zamiast obrazka)
+                    // Colored control tower (div icon instead of image)
                     const towerIcon = L.divIcon({
                         className: '',
                         html: `<div class="tower-marker" style="border-color:${color}">
@@ -158,22 +158,22 @@ class MapManager {
     }
 
     // ------------------------------------------------------------------
-    // Live radar — wywoływane z app.js co N sekund
+    // Live radar — called from app.js every N seconds
     // ------------------------------------------------------------------
 
     /**
-     * Aktualizuje pozycje samolotów i podświetlenie województw.
-     * @param {Array} flights  - tablica obiektów z /api/flights
-     * @param {Array} voivData - tablica obiektów z /api/voivodeships
+     * Updates aircraft positions and voivodeship highlighting.
+     * @param {Array} flights  - array of objects from /api/flights
+     * @param {Array} voivData - array of objects from /api/voivodeships
      */
     updateRadar(flights, voivData) {
-        // 1. Zaktualizuj podświetlenie województw na podstawie liczby lotów
+        // 1. Update voivodeship highlighting based on number of flights
         this._updateVoivOpacity(voivData);
 
-        // 2. Zbierz ID aktywnych lotów z tej odpowiedzi
+        // 2. Collect active flight IDs from this response
         const activeIds = new Set(flights.map(f => f.id));
 
-        // 3. Usuń markery lotów które już nie istnieją
+        // 3. Remove markers for flights that no longer exist
         for (const id of Object.keys(this._flightMarkers)) {
             if (!activeIds.has(id)) {
                 this.map.removeLayer(this._flightMarkers[id]);
@@ -186,19 +186,19 @@ class MapManager {
             }
         }
 
-        // 4. Dodaj / aktualizuj markery
+        // 4. Add / update markers
         flights.forEach(f => {
             const lat  = f.current_lat;
             const lon  = f.current_lon;
             const voiv = f.actual_voivodeship;
             const color = this._voivColors[voiv] || "#3498db";
 
-            // Historia pozycji (ślad)
+            // Position history (trail)
             if (!this._flightHistory[f.id]) this._flightHistory[f.id] = [];
             this._flightHistory[f.id].push([lat, lon]);
             if (this._flightHistory[f.id].length > 30) this._flightHistory[f.id].shift();
 
-            // Ślad (polyline)
+            // Trail (polyline)
             if (this._flightTrails[f.id]) {
                 this._flightTrails[f.id].setLatLngs(this._flightHistory[f.id]);
             } else {
@@ -208,17 +208,17 @@ class MapManager {
                 ).addTo(this.map);
             }
 
-            // Marker samolotu
+            // Aircraft marker
             if (this._flightMarkers[f.id]) {
                 const marker = this._flightMarkers[f.id];
                 marker.setLatLng([lat, lon]);
-                marker._atcData = f;   // odśwież dane dla popupu
-                // Zaktualizuj kolor jeśli zmieniło się województwo (handoff)
+                marker._atcData = f;   // refresh data for popup
+                // Update color if voivodeship changed (handoff)
                 marker.setIcon(this._planeIcon(color, f.id));
                 if (this._flightTrails[f.id]) {
                     this._flightTrails[f.id].setStyle({ color });
                 }
-                // Odśwież popup jeśli jest otwarty
+                // Refresh popup if it's open
                 if (marker.isPopupOpen()) {
                     marker.setPopupContent(this._flightPopupContent(f));
                 }
@@ -229,7 +229,7 @@ class MapManager {
                 }).addTo(this.map);
 
                 marker._atcData = f;
-                // Popup czyta zawsze z marker._atcData — nigdy nie będzie stale
+                // Popup always reads from marker._atcData — will never be stale
                 marker.bindPopup(() => this._flightPopupContent(marker._atcData), { maxWidth: 280 });
 
                 this._flightMarkers[f.id] = marker;
@@ -237,7 +237,7 @@ class MapManager {
         });
     }
 
-    /** Ikona samolotu (div icon z kolorem agenta) */
+    /** Aircraft icon (div icon with agent color) */
     _planeIcon(color, flightId) {
         return L.divIcon({
             className: '',
@@ -247,7 +247,7 @@ class MapManager {
         });
     }
 
-    /** Treść popup-u samolotu */
+    /** Aircraft popup content */
     _flightPopupContent(f) {
         const color = this._voivColors[f.actual_voivodeship] || "#3498db";
         return `
@@ -265,7 +265,7 @@ class MapManager {
             </div>`;
     }
 
-    /** Zaktualizuj przezroczystość wypełnienia województw wg liczby lotów */
+    /** Update fill transparency of voivodeships based on number of flights */
     _updateVoivOpacity(voivData) {
         const maxCount = Math.max(1, ...voivData.map(v => v.aircraft_count));
         voivData.forEach(v => {
@@ -279,46 +279,73 @@ class MapManager {
     }
 
     // ------------------------------------------------------------------
-    // Panele boczne
+    // Side panels
     // ------------------------------------------------------------------
 
-    _renderAirportPanel(airport, voivodeshipName) {
+    
+    async _renderAirportPanel(airport, voivodeshipName) {
         if (!this.panel || !this.content) return;
 
+        // Fetch active flights for this voivodeship
+        let flights = [];
+        try {
+            flights = await ATC_API.getFlightsByVoivodeship(voivodeshipName);
+        } catch (e) {
+            /* API may not be available yet */
+        }
+
+        const flightRows = flights.length
+            ? flights.map(f => `
+                <tr>
+                    <td><b>${f.id}</b></td>
+                    <td>${f.starting_point} → ${f.destination}</td>
+                    <td>${f.speed} km/h</td>
+                    <td>${f.height} m</td>
+                </tr>`).join("")
+            : `<tr><td colspan="4" style="color:#888">No active flights</td></tr>`;
+
         this.content.innerHTML = `
-            <h2 style="border-bottom: 2px solid #3498db; padding-bottom: 10px;">${airport.name}</h2>
+            <h2 style="padding-bottom: 10px;">${airport.name}</h2>
             <p style="font-size: 1.1em; color: #3498db;">
-                <b>IATA:</b> ${airport.iata_code} | <b>Wojew.:</b> ${voivodeshipName}
+                <b>IATA:</b> ${airport.iata_code} | <b>Voiv.:</b> ${voivodeshipName}
             </p>
             <div style="margin-top: 15px; line-height: 1.8;">
-                <p>📍 <b>Szerokość:</b> ${airport.location.latitude}</p>
-                <p>📍 <b>Długość:</b> ${airport.location.longitude}</p>
-                <hr style="border: 0.5px solid #455a64; margin: 10px 0;">
-                <p>🛫 <b>Pasów startowych:</b> ${airport.infrastructure.runways_count}</p>
-                <p>🅿️ <b>Miejsca postojowe:</b> ${airport.infrastructure.parking_stands}</p>
+                <p>📍 <b>Latitude:</b> ${airport.location.latitude}</p>
+                <p>📍 <b>Longitude:</b> ${airport.location.longitude}</p>
+                <hr style="margin: 10px 0;">
+                <p>🛫 <b>Ilość pasów:</b> ${airport.infrastructure.runways_count}</p>
+                <p>🅿️ <b>Miejsca parkingowe:</b> ${airport.infrastructure.parking_stands}</p>
                 <hr>
             </div>
+            
+            <h3 style="margin-top:16px; color:#fff; margin-bottom: 10px;">✈ Aktywne loty w tym województwie</h3>
+            <table class="agent-table">
+                <thead>
+                    <tr><th>ID</th><th>Trasa</th><th>Prędkość</th><th>Wysokość</th></tr>
+                </thead>
+                <tbody>${flightRows}</tbody>
+            </table>
         `;
 
         this.panel.classList.add('active');
         this.map.flyTo([airport.location.latitude, airport.location.longitude], 7);
     }
 
-    /** Otwiera panel z informacjami o agencie / wieży województwa */
+    /** Opens panel with information about the agent / voivodeship tower */
     async _showAgentPanel(voivKey) {
         if (!this.panel || !this.content) return;
         this._highlightVoivodeship(voivKey);
 
         const color = this._voivColors[voivKey] || "#3498db";
 
-        // Pobierz loty i log równolegle
+        // Fetch flights and log in parallel
         let flights = [], logData = { log: [] };
         try {
             [flights, logData] = await Promise.all([
                 ATC_API.getFlightsByVoivodeship(voivKey),
                 ATC_API.getVoivodeshipLog(voivKey, 10),
             ]);
-        } catch (e) { /* API może nie być jeszcze dostępne */ }
+        } catch (e) { /* API may not be available yet */ }
 
         const flightRows = flights.length
             ? flights.map(f => `
@@ -354,7 +381,7 @@ class MapManager {
         this.panel.classList.add('active');
     }
 
-    /** Podświetla wybrane województwo, resetuje poprzednie */
+    /** Highlights selected voivodeship, resets previous */
     _highlightVoivodeship(voivKey) {
         if (this._selectedVoiv && this._voivPolygons[this._selectedVoiv]) {
             this._voivPolygons[this._selectedVoiv].setStyle({ weight: 2, color: "#2c3e50" });

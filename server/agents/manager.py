@@ -1,35 +1,35 @@
 """
-manager.py — ATCManager: centralny Ray aktor nadzorujący sieć wież ATC.
+manager.py — ATCManager: central Ray actor supervising the ATC tower network.
 
-Architektura
+Architecture
 ------------
-ATCManager jest asynchronicznym Ray aktorem (async actor), który:
+ATCManager is an asynchronous Ray actor (async actor) that:
 
-  1. Tworzy i inicjalizuje wszystkie 16 VoivodeshipActor-ów oraz SimulationClock.
-  2. Rejestruje sąsiadów między wieżami (register_neighbors).
-  3. Uruchamia pętlę symulacji w tle (asyncio task) — każdy tick:
-       a. pobiera (sim_time, tick, delta_hours) z SimulationClock.advance()
-       b. wywołuje VoivodeshipActor.update() na wszystkich wieżach równolegle
-       c. przetwarza TickSummary-e: zbiera statystyki, loguje ostrzeżenia
-       d. losowo generuje nowe loty via FlightSimulator.generate_random_connected_flight()
-       e. zwalnia ID zakończonych lotów via FlightSimulator.generator.release_id()
-  4. Udostępnia metody query dla warstwy API / Flask.
+  1. Creates and initializes all 16 VoivodeshipActor instances and SimulationClock.
+  2. Registers neighbors between towers (register_neighbors).
+  3. Runs the simulation loop in the background (asyncio task) — each tick:
+       a. fetches (sim_time, tick, delta_hours) from SimulationClock.advance()
+       b. calls VoivodeshipActor.update() on all towers in parallel
+       c. processes TickSummary objects: collects statistics, logs warnings
+       d. randomly generates new flights via FlightSimulator.generate_random_connected_flight()
+       e. releases IDs of finished flights via FlightSimulator.generator.release_id()
+  4. Provides query methods for the API / Flask layer.
 
-Generowanie lotów
------------------
-Manager **nie duplikuje** logiki tworzenia samolotów — deleguje ją do
-``FlightSimulator`` z flight_engine.py (ta sama klasa co w trybie standalone).
-``FlightSimulator`` pełni tu rolę fabryki: tworzy obiekt Aircraft z poprawnym
-stanem początkowym, a manager natychmiast przejmuje ten obiekt (usuwa go z
-``simulator.all_flights``) i kieruje do odpowiedniego VoivodeshipActor-a.
-Aktualizacja pozycji należy wyłącznie do aktorów — simulator.update_positions()
-pozostaje nieużywana.
+Flight Generation
+------------------
+Manager **does not duplicate** the aircraft creation logic — it delegates it to
+``FlightSimulator`` from flight_engine.py (same class as in standalone mode).
+``FlightSimulator`` acts as a factory: creates an Aircraft object with correct
+initial state, and manager immediately takes over the object (removes it from
+``simulator.all_flights``) and directs it to the appropriate VoivodeshipActor.
+Position updates belong exclusively to actors — simulator.update_positions()
+remains unused.
 
-Użycie
+Usage
 ------
   ray.init()
   manager = ATCManager.remote(max_flights=16, simulation_speed=60)
-  ray.get(manager.start.remote())          # uruchamia pętlę w tle
+  ray.get(manager.start.remote())          # starts the loop in the background
   ...
   flights = ray.get(manager.get_all_flights.remote())
   ray.get(manager.stop.remote())
@@ -55,7 +55,7 @@ logger = logging.getLogger("ATC.Manager")
 
 @dataclass
 class TickReport:
-    """Zbiorczy raport z jednego tick-a całej sieci."""
+    """Aggregate report from a single tick of the entire network."""
     tick: int
     sim_time: float
     total_active: int
@@ -85,11 +85,11 @@ class TickReport:
 @ray.remote
 class ATCManager:
     """
-    Centralny menedżer całej sieci wież ATC (16 województw).
+    Central manager of the entire ATC tower network (16 voivodeships).
 
-    Działa jako asynchroniczny Ray aktor, dzięki czemu pętla symulacji
-    (asyncio.Task) może pracować w tle, a metody query są nadal dostępne
-    w trakcie działania symulacji.
+    Acts as an asynchronous Ray actor, so the simulation loop
+    (asyncio.Task) can work in the background while query methods remain available
+    during simulation execution.
     """
 
     def __init__(
@@ -99,11 +99,11 @@ class ATCManager:
         tick_interval: float = 1.0,
     ) -> None:
         """
-        :param max_flights:        Maksymalna liczba jednoczesnych lotów w sieci.
-        :param simulation_speed:   Mnożnik czasu (60 → 1s real = 1 min sim).
-        :param tick_interval:      Rzeczywisty czas (w sekundach) między tick-ami.
+        :param max_flights:        Maximum number of concurrent flights in the network.
+        :param simulation_speed:   Time multiplier (60 → 1s real = 1 min sim).
+        :param tick_interval:      Actual time (in seconds) between ticks.
         """
-        # Lazy imports — moduły te muszą być dostępne w PYTHONPATH workerów Ray
+        # Lazy imports — these modules must be available in Ray workers' PYTHONPATH
         from topology import AdjacencyMatrix
         from aircraft_generator import AircraftGenerator
         from actor import SimulationClock, VoivodeshipActor
@@ -116,11 +116,11 @@ class ATCManager:
         self._loop_task: Optional[asyncio.Task] = None
 
         # ----------------------------------------------------------------
-        # FlightSimulator jako fabryka lotów.
-        # Zarządza generatorem ID (AircraftGenerator) oraz topologią.
-        # Aktualizacja pozycji należy do aktorów — simulator.update_positions()
-        # pozostaje nieużywana; simulator pełni tu wyłącznie rolę fabryki.
-        # max_flights ustawione na 9999 — kontrolę limitu prowadzi manager.
+        # FlightSimulator as the flights factory.
+        # Manages the ID generator (AircraftGenerator) and topology.
+        # Position updates belong to actors — simulator.update_positions()
+        # remains unused; simulator acts only as a factory.
+        # max_flights set to 9999 — the manager handles the limit.
         # ----------------------------------------------------------------
         from flight_engine import FlightSimulator
         from topology import AdjacencyMatrix
@@ -133,13 +133,13 @@ class ATCManager:
         self._voiv_names: List[str] = list(self._simulator.matrix.adjacent_voivodeships.keys())
 
         # ----------------------------------------------------------------
-        # Zegar symulacji (shared singleton)
+        # Simulation clock (shared singleton)
         # ----------------------------------------------------------------
         from actor import SimulationClock, VoivodeshipActor
         self._clock = SimulationClock.remote(simulation_speed)
 
         # ----------------------------------------------------------------
-        # Tworzenie aktorów województw
+        # Creating voivodeship actors
         # ----------------------------------------------------------------
         self._actors: Dict[str, "VoivodeshipActor"] = {
             name: VoivodeshipActor.remote(
@@ -152,8 +152,8 @@ class ATCManager:
         }
 
         # ----------------------------------------------------------------
-        # Rejestracja sąsiadów — futures przechowywane, await w start()
-        # aby uniknąć ray.get() w konstruktorze async aktora.
+        # Registering neighbors — futures stored, awaited in start()
+        # to avoid ray.get() in the async actor constructor.
         # ----------------------------------------------------------------
         self._neighbor_reg_futures = [
             actor.register_neighbors.remote(
@@ -163,49 +163,49 @@ class ATCManager:
         ]
 
         # ----------------------------------------------------------------
-        # Śledzenie aktywnych lotów (id -> voivodeship) dla cleanup
+        # Tracking active flights (id -> voivodeship) for cleanup
         # ----------------------------------------------------------------
         self._active_flight_ids: Dict[str, str] = {}  # flight_id → voivodeship name
 
         # ----------------------------------------------------------------
-        # Historia raportów
+        # Report history
         # ----------------------------------------------------------------
         self._tick_reports: List[dict] = []
         self._report_capacity: int = 200
 
         logger.info(
-            "[ATCManager] Zainicjalizowano: %d województw, max_flights=%d, speed=%sx",
+            "[ATCManager] Initialized: %d voivodeships, max_flights=%d, speed=%sx",
             len(self._actors),
             max_flights,
             simulation_speed,
         )
 
     # ------------------------------------------------------------------
-    # Sterowanie symulacją
+    # Simulation control
     # ------------------------------------------------------------------
 
     async def start(self) -> str:
         """
-        Uruchamia pętlę symulacji jako asyncio.Task w tle.
-        Jeśli symulacja już działa, nie robi nic.
-        Przy pierwszym wywołaniu czeka na zakończenie rejestracji sąsiadów.
+        Starts the simulation loop as an asyncio.Task in the background.
+        If simulation is already running, does nothing.
+        On first call, waits for neighbor registration to complete.
         """
         if self._running:
             return "already_running"
-        # Dokończ rejestrację sąsiadów (odpala się tu, nie w __init__, żeby
-        # uniknąć blokującego ray.get w konstruktorze async aktora).
+        # Complete neighbor registration (runs here, not in __init__, to
+        # avoid blocking ray.get in the async actor constructor).
         if self._neighbor_reg_futures:
             await asyncio.gather(*self._neighbor_reg_futures)
             self._neighbor_reg_futures = []
         self._running = True
         self._loop_task = asyncio.ensure_future(self._simulation_loop())
-        logger.info("[ATCManager] Symulacja uruchomiona.")
+        logger.info("[ATCManager] Simulation started.")
         return "started"
 
     async def stop(self) -> str:
         """
-        Zatrzymuje pętlę symulacji.
-        Metoda czeka, aż bieżący tick zakończy się, zanim wróci.
+        Stops the simulation loop.
+        Waits for the current tick to finish before returning.
         """
         self._running = False
         if self._loop_task and not self._loop_task.done():
@@ -213,49 +213,49 @@ class ATCManager:
                 await asyncio.wait_for(self._loop_task, timeout=10.0)
             except (asyncio.TimeoutError, asyncio.CancelledError):
                 self._loop_task.cancel()
-        logger.info("[ATCManager] Symulacja zatrzymana.")
+        logger.info("[ATCManager] Simulation stopped.")
         return "stopped"
 
     def is_running(self) -> bool:
-        """Zwraca True, jeśli pętla symulacji jest aktywna."""
+        """Returns True if the simulation loop is active."""
         return self._running
 
     # ------------------------------------------------------------------
-    # Pętla symulacji (prywatna, uruchamiana jako task)
+    # Simulation loop (private, run as a task)
     # ------------------------------------------------------------------
 
     async def _simulation_loop(self) -> None:
-        """Główna pętla — każda iteracja to jeden tick symulacji."""
+        """Main loop — each iteration is one simulation tick."""
         while self._running:
             try:
                 await self._tick()
             except Exception as exc:  # noqa: BLE001
-                logger.error("[ATCManager] Błąd w pętli: %s", exc, exc_info=True)
+                logger.error("[ATCManager] Error in loop: %s", exc, exc_info=True)
             await asyncio.sleep(self.tick_interval)
 
     async def _tick(self) -> None:
         """
-        Jeden krok symulacji:
-          1. Pobierz czas z zegara (await — nie blokuje event loopa).
-          2. Zaktualizuj wszystkie wieże równolegle (asyncio.gather).
-          3. Przetwórz wyniki (statystyki, zwalnianie ID).
-          4. Losowo wygeneruj nowy lot.
+        One simulation step:
+          1. Fetch time from the clock (await — doesn't block event loop).
+          2. Update all towers in parallel (asyncio.gather).
+          3. Process results (statistics, ID release).
+          4. Randomly generate a new flight.
         """
-        # 1. Czas — jeden call do zegara, wynik dzielony ze wszystkimi aktorami.
-        #    W async aktorze Ray ObjectRef jest awaitable, więc nie blokujemy
-        #    event loopa.
+        # 1. Time — single clock call, result shared with all actors.
+        #    In an async Ray actor, ObjectRef is awaitable, so we don't block
+        #    the event loop.
         sim_time, tick, delta_hours = await self._clock.advance.remote()
 
-        # 2. Aktualizacja wszystkich wież równolegle.
-        #    asyncio.gather() pozwala event loopowi obsługiwać inne zadania
-        #    podczas oczekiwania na wyniki zdalnych aktorów.
+        # 2. Update all towers in parallel.
+        #    asyncio.gather() allows the event loop to handle other tasks
+        #    while waiting for remote actor results.
         update_refs = [
             actor.update.remote(sim_time, tick, delta_hours)
             for actor in self._actors.values()
         ]
         summaries = await asyncio.gather(*update_refs)
 
-        # 3. Przetwarzanie wyników
+        # 3. Process results
         total_handed = 0
         total_arrived = 0
         total_warnings = 0
@@ -266,12 +266,12 @@ class ATCManager:
             total_arrived += len(summary.arrived)
             total_warnings += len(summary.warnings)
 
-            # Zwalnianie ID zakończonych lotów
+            # Release IDs of finished flights
             for fid in summary.arrived:
                 self._simulator.generator.release_id(fid)
                 self._active_flight_ids.pop(fid, None)
 
-            # Aktualizacja trackera (handoff zmienia właściciela)
+            # Update tracker (handoff changes owner)
             for fid in summary.handed_off:
                 self._active_flight_ids[fid] = summary.voivodeship
 
@@ -281,12 +281,12 @@ class ATCManager:
                 for w in summary.warnings:
                     logger.warning("[%s] %s", summary.voivodeship, w)
 
-        # 4. Spawn nowego lotu (jeśli jest miejsce) — async, nie blokuje event loopa
+        # 4. Spawn new flight (if space available) — async, doesn't block event loop
         current_total = len(self._active_flight_ids)
         if current_total < self.max_flights and random.random() > 0.55:
             await self._spawn_random_flight_async(sim_time, tick)
 
-        # 5. Zapisanie raportu
+        # 5. Save report
         report = TickReport(
             tick=tick,
             sim_time=sim_time,
@@ -301,19 +301,19 @@ class ATCManager:
             self._tick_reports = self._tick_reports[-self._report_capacity:]
 
     # ------------------------------------------------------------------
-    # Generowanie lotów — delegowane do FlightSimulator
+    # Flight generation — delegated to FlightSimulator
     # ------------------------------------------------------------------
 
     def _route_aircraft_to_actor(self, aircraft) -> Optional[tuple]:
         """
-        Wyznacza właściwy VoivodeshipActor dla już gotowego obiektu Aircraft
-        (ze statusem IN_FLIGHT i uzupełnionym actual_voivodeship).
+        Determines the proper VoivodeshipActor for an already-ready Aircraft object
+        (with IN_FLIGHT status and populated actual_voivodeship).
 
-        FlightSimulator.add_flight() ustawia actual_voivodeship na nazwę
-        z GeoJSON (np. 'Mazowieckie'). Mapowanie na klucz topologii
-        (np. 'mazowieckie') pochodzi z _GEOJSON_TO_TOPOLOGY_KEY w actor.py.
+        FlightSimulator.add_flight() sets actual_voivodeship to the GeoJSON name
+        (e.g., 'Mazowieckie'). Mapping to topology key (e.g., 'mazowieckie')
+        comes from _GEOJSON_TO_TOPOLOGY_KEY in actor.py.
 
-        :returns: ``(aircraft, target_actor, voiv_key)`` lub ``None``.
+        :returns: ``(aircraft, target_actor, voiv_key)`` or ``None``.
         """
         from actor import _GEOJSON_TO_TOPOLOGY_KEY
 
@@ -323,14 +323,14 @@ class ATCManager:
         if voiv_key and voiv_key in self._actors:
             return aircraft, self._actors[voiv_key], voiv_key
 
-        # Fallback: voivodeship lotniska startowego z danych topologii
+        # Fallback: voivodeship of the starting airport from topology data
         start_data = self._simulator.matrix.airports_data.get(aircraft.starting_point, {})
         voiv_key = start_data.get("voivodeship")
         if voiv_key and voiv_key in self._actors:
             return aircraft, self._actors[voiv_key], voiv_key
 
         logger.warning(
-            "[ATCManager] Nie znaleziono aktora dla %s (voiv=%s).",
+            "[ATCManager] Actor not found for %s (voiv=%s).",
             aircraft.id, raw_voiv,
         )
         self._simulator.generator.release_id(aircraft.id)
@@ -338,22 +338,22 @@ class ATCManager:
 
     async def _spawn_flight_async(self, start: str, dest: str, sim_time: float, tick: int) -> Optional[str]:
         """
-        Tworzy nowy lot via FlightSimulator.add_flight() i kieruje go do
-        właściwego VoivodeshipActor-a.
+        Creates a new flight via FlightSimulator.add_flight() and directs it to
+        the proper VoivodeshipActor.
 
-        FlightSimulator.add_flight() odpowiada za całą inicjalizację samolotu:
-        unikalny ID, stan IN_FLIGHT, współrzędne GPS, wykrycie voivodeship.
-        Manager przejmuje obiekt (usuwa z simulator.all_flights) i oddaje
-        aktorowi — od tej chwili pozycję aktualizują wyłącznie aktorzy.
+        FlightSimulator.add_flight() is responsible for full aircraft initialization:
+        unique ID, IN_FLIGHT state, GPS coordinates, voivodeship detection.
+        Manager takes over the object (removes from simulator.all_flights) and gives
+        it to the actor — from that point, positions are updated exclusively by actors.
 
-        :returns: ID nowego lotu lub None przy błędzie.
+        :returns: ID of new flight or None on error.
         """
         aircraft = self._simulator.add_flight(start, dest)
         if aircraft is None:
             return None
 
-        # Natychmiast wyjmij z wewnętrznej listy symulatora —
-        # właścicielem stanu jest teraz VoivodeshipActor.
+        # Immediately remove from simulator's internal list —
+        # state ownership now belongs to VoivodeshipActor.
         self._simulator.all_flights.remove(aircraft)
 
         result = self._route_aircraft_to_actor(aircraft)
@@ -371,12 +371,12 @@ class ATCManager:
 
     async def _spawn_random_flight_async(self, sim_time: float, tick: int) -> Optional[str]:
         """
-        Deleguje do FlightSimulator.generate_random_connected_flight(),
-        a następnie kieruje wynikowy lot do właściwego aktora.
+        Delegates to FlightSimulator.generate_random_connected_flight(),
+        then directs the resulting flight to the proper actor.
 
-        :returns: ID nowego lotu lub None.
+        :returns: ID of new flight or None.
         """
-        # Użyj wbudowanej metody symulatora do wyboru losowej pary lotnisk
+        # Use simulator's built-in method to select random airport pair
         aircraft = self._simulator.generate_random_connected_flight()
         if aircraft is None:
             return None
@@ -397,16 +397,16 @@ class ATCManager:
         return aircraft.id
 
     # ------------------------------------------------------------------
-    # Publiczne API — query (async, bo aktor jest async i ray.get w sync
-    # metodach blokowałby event loop)
+    # Public API — queries (async because actor is async and ray.get in sync
+    # methods would block the event loop)
     # ------------------------------------------------------------------
 
     async def get_all_flights(self) -> List[dict]:
         """
-        Zwraca snapshoty wszystkich aktywnych lotów ze wszystkich wież.
-        Bezpieczne do wywołania między tick-ami.
+        Returns snapshots of all active flights from all towers.
+        Safe to call between ticks.
 
-        :returns: Lista słowników (format AircraftSnapshot.to_dict()).
+        :returns: List of dicts (AircraftSnapshot.to_dict() format).
         """
         refs = [a.get_aircraft_snapshots.remote() for a in self._actors.values()]
         results = await asyncio.gather(*refs)
@@ -417,10 +417,10 @@ class ATCManager:
 
     async def get_flights_by_voivodeship(self, voivodeship: str) -> List[dict]:
         """
-        Zwraca snapshoty lotów z konkretnego województwa.
+        Returns flight snapshots from a specific voivodeship.
 
-        :param voivodeship: Klucz województwa (np. ``'mazowieckie'``).
-        :returns: Lista słowników lub pusta lista, gdy województwo nie istnieje.
+        :param voivodeship: Voivodeship key (e.g., ``'mazowieckie'``).
+        :returns: List of dicts or empty list if voivodeship doesn't exist.
         """
         actor = self._actors.get(voivodeship)
         if actor is None:
@@ -429,10 +429,10 @@ class ATCManager:
 
     async def get_network_status(self) -> dict:
         """
-        Zbiorczy status całej sieci: liczba lotów per województwo,
-        sąsiedzi, liczba wpisów w logach.
+        Aggregate network status: number of flights per voivodeship,
+        neighbors, number of log entries.
 
-        :returns: Słownik z kluczem ``"voivodeships"`` i listą statusów.
+        :returns: Dict with ``"voivodeships"`` key and list of statuses.
         """
         status_refs = [a.get_status.remote() for a in self._actors.values()]
         statuses = await asyncio.gather(*status_refs)
@@ -448,11 +448,11 @@ class ATCManager:
 
     async def get_voivodeship_log(self, voivodeship: str, last_n: int = 50) -> List[str]:
         """
-        Pobiera ostatnie *last_n* wpisów z logu wskazanej wieży.
+        Fetches the last *last_n* log entries from the specified tower.
 
-        :param voivodeship: Klucz województwa.
-        :param last_n:      Ile ostatnich wpisów zwrócić.
-        :returns: Lista stringów z logiem lub ``[]`` gdy województwo nie istnieje.
+        :param voivodeship: Voivodeship key.
+        :param last_n:      How many recent entries to return.
+        :returns: List of log strings or ``[]`` if voivodeship doesn't exist.
         """
         actor = self._actors.get(voivodeship)
         if actor is None:
@@ -461,38 +461,38 @@ class ATCManager:
 
     def get_last_tick_reports(self, last_n: int = 10) -> List[dict]:
         """
-        Zwraca ostatnie *last_n* raportów tick-owych całej sieci.
-        Czysto synchroniczna — bez remote calls, bezpieczna w async aktorze.
+        Returns the last *last_n* tick reports from the entire network.
+        Purely synchronous — no remote calls, safe in async actor.
 
-        :param last_n: Liczba ostatnich raportów.
-        :returns: Lista słowników TickReport.to_dict().
+        :param last_n: Number of last reports.
+        :returns: List of TickReport.to_dict() dicts.
         """
         return self._tick_reports[-last_n:]
 
     async def spawn_flight(self, start: str, dest: str) -> Optional[str]:
         """
-        Publiczne API do ręcznego tworzenia lotu.
-        Deleguje do FlightSimulator.add_flight() — całe przygotowanie
-        obiektu Aircraft (ID, stan, współrzędne, voivodeship) odbywa się tam.
+        Public API for manually creating a flight.
+        Delegates to FlightSimulator.add_flight() — all Aircraft object preparation
+        (ID, state, coordinates, voivodeship) happens there.
 
-        :param start: Kod IATA lotniska startowego.
-        :param dest:  Kod IATA lotniska docelowego.
-        :returns:     ID stworzonego lotu lub None przy błędzie.
+        :param start: IATA code of starting airport.
+        :param dest:  IATA code of destination airport.
+        :returns:     ID of created flight or None on error.
         """
         sim_time, tick = await self._clock.get_time.remote()
         return await self._spawn_flight_async(start, dest, sim_time, tick)
 
     def get_available_airports(self) -> List[str]:
-        """Zwraca listę wszystkich dostępnych kodów IATA lotnisk."""
+        """Returns list of all available IATA airport codes."""
         return self._simulator.available_airports
 
     def get_voivodeship_names(self) -> List[str]:
-        """Zwraca listę nazw-kluczy wszystkich województw."""
+        """Returns list of all voivodeship key names."""
         return self._voiv_names
 
 
 # ---------------------------------------------------------------------------
-# Skrypt uruchomieniowy (python manager.py)
+# Startup script (python manager.py)
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
@@ -509,7 +509,7 @@ if __name__ == "__main__":
     manager = ATCManager.remote(max_flights=12, simulation_speed=120, tick_interval=1.0)
     ray.get(manager.start.remote())
 
-    print("Symulacja działa. Ctrl+C aby zatrzymać.\n")
+    print("Simulation is running. Press Ctrl+C to stop.\n")
     try:
         while True:
             time.sleep(5)
@@ -517,17 +517,17 @@ if __name__ == "__main__":
             reports = ray.get(manager.get_last_tick_reports.remote(3))
             print(
                 f"\n[T={status['sim_time']:.0f}s | tick={status['tick']}] "
-                f"Aktywnych lotów: {status['total_aircraft']}"
+                f"Active flights: {status['total_aircraft']}"
             )
             for r in reports:
                 print(
-                    f"  tick={r['tick']:>5} | aktywne={r['total_active']:>3} | "
+                    f"  tick={r['tick']:>5} | active={r['total_active']:>3} | "
                     f"handoff={r['total_handed_off']:>2} | "
-                    f"lądowania={r['total_arrived']:>2} | "
-                    f"ostrzeżenia={r['total_warnings']}"
+                    f"landings={r['total_arrived']:>2} | "
+                    f"warnings={r['total_warnings']}"
                 )
     except KeyboardInterrupt:
-        print("\nZatrzymywanie...")
+        print("\nStopping...")
         ray.get(manager.stop.remote())
         ray.shutdown()
-        print("Zamknięto.")
+        print("Closed.")

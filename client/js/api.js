@@ -1,57 +1,57 @@
 /**
- * api.js — klient REST API dla systemu ATC.
+ * api.js — REST API client for the ATC system.
  *
- * Wszystkie metody zwracają Promise.
- * BASE_URL wskazuje na Flask backend (port 5001 przez docker-compose).
+ * All methods return Promise.
+ * BASE_URL points to Flask backend (port 5001 via docker-compose).
  */
 
 const BASE_URL = "http://localhost:5001/api";
 
 const ATC_API = {
 
-    /** Zbiorczy status sieci: tick, sim_time, liczba lotów */
+    /** Aggregate network status: tick, sim_time, number of flights */
     async getStatus() {
         const r = await fetch(`${BASE_URL}/status`);
         return r.json();
     },
 
-    /** Lista województw z liczbą śledzonych lotów */
+    /** List of voivodeships with number of tracked flights */
     async getVoivodeships() {
         const r = await fetch(`${BASE_URL}/voivodeships`);
         return r.json();
     },
 
-    /** Wszystkie aktywne loty w sieci */
+    /** All active flights in the network */
     async getAllFlights() {
         const r = await fetch(`${BASE_URL}/flights`);
         return r.json();
     },
 
-    /** Loty śledzone przez konkretną wieżę (klucz ASCII-lowercase) */
+    /** Flights tracked by a specific tower (key in ASCII-lowercase) */
     async getFlightsByVoivodeship(voivodeship) {
         const r = await fetch(`${BASE_URL}/flights/${voivodeship}`);
         return r.json();
     },
 
-    /** Ostatnie n wpisów logu wieży */
+    /** Last n tower log entries */
     async getVoivodeshipLog(voivodeship, n = 50) {
         const r = await fetch(`${BASE_URL}/log/${voivodeship}?n=${n}`);
         return r.json();
     },
 
-    /** Ostatnie n tick-raportów całej sieci */
+    /** Last n tick reports from the entire network */
     async getTickReports(n = 30) {
         const r = await fetch(`${BASE_URL}/reports?n=${n}`);
         return r.json();
     },
 
-    /** Lista kodów IATA lotnisk */
+    /** List of IATA airport codes */
     async getAirports() {
         const r = await fetch(`${BASE_URL}/airports`);
         return r.json();
     },
 
-    /** Ręczny spawn lotu */
+    /** Manual flight spawn */
     async spawnFlight(start, dest) {
         const r = await fetch(`${BASE_URL}/spawn`, {
             method: "POST",
@@ -61,13 +61,13 @@ const ATC_API = {
         return r.json();
     },
 
-    /** Uruchom symulację */
+    /** Start simulation */
     async startSimulation() {
         const r = await fetch(`${BASE_URL}/control/start`, { method: "POST" });
         return r.json();
     },
 
-    /** Zatrzymaj symulację */
+    /** Stop simulation */
     async stopSimulation() {
         const r = await fetch(`${BASE_URL}/control/stop`, { method: "POST" });
         return r.json();

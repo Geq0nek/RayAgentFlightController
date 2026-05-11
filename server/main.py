@@ -10,7 +10,6 @@ Uruchamia:
 import sys
 import os
 
-# Upewnij się, że folder agents jest w PYTHONPATH dla workerów Ray
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "agents"))
 
 import ray
@@ -32,12 +31,8 @@ def create_app(manager_handle) -> Flask:
 if __name__ == "__main__":
     agents_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agents")
 
-    # Wyłącz monitor pamięci Ray — w małym kontenerze (<2 GB RAM) zabija aktorów
     os.environ["RAY_memory_monitor_refresh_ms"] = "0"
 
-    # runtime_env z env_vars (bez working_dir) — worker importuje z oryginalnej
-    # ścieżki /workspace/server/agents/, więc __file__ w topology.py
-    # wskazuje właściwy katalog i relative-path do YAML działa poprawnie.
     ray.init(
         ignore_reinit_error=True,
         num_cpus=4,
@@ -47,7 +42,7 @@ if __name__ == "__main__":
 
     # 2. ATCManager
     manager = ATCManager.remote(
-        max_flights=16,
+        max_flights=20,
         simulation_speed=60,   # 1s real = 1min sim
         tick_interval=1.0,
     )

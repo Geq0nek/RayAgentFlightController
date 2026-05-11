@@ -1,13 +1,13 @@
-Flight Radar Simulator — dokumentacja
-======================================
+Flight Radar Simulator — Documentation
+=======================================
 
-Witaj w dokumentacji projektu **Flight Radar Simulator**.
-Symulator generuje losowe loty nad Polską, śledzi pozycje GPS samolotów
-w czasie rzeczywistym i wykrywa, w którym województwie aktualnie się znajdują.
+Welcome to the **Flight Radar Simulator** project documentation.
+The simulator generates random flights over Poland, tracks aircraft GPS positions
+in real-time, and detects in which voivodeship they are currently located.
 
 .. toctree::
    :maxdepth: 2
-   :caption: Moduły serwera
+   :caption: Server Modules
 
    modules/aircraft
    modules/aircraft_generator
@@ -16,8 +16,8 @@ w czasie rzeczywistym i wykrywa, w którym województwie aktualnie się znajduj�
    modules/manager
    modules/topology
 
-Indeks
-------
+Index
+-----
 
 * :ref:`genindex`
 * :ref:`modindex`
