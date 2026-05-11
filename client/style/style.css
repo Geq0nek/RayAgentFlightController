@@ -168,3 +168,70 @@ th {
 .aircraft-marker div {
     pointer-events: none;
 }
+
+/* =============================================
+   LIVE RADAR — nowe elementy
+   ============================================= */
+
+/* Mapa zajmuje całą wysokość section-a */
+#page-radar { padding: 0 !important; position: relative; }
+#map { height: 100% !important; border: none !important; border-radius: 0 !important; }
+
+/* Pasek statusu w nav */
+.status-bar {
+    margin-left: auto;
+    font-size: 0.82em;
+    color: #555;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.dot-green { display:inline-block; width:8px; height:8px; border-radius:50%; background:#2ecc71; }
+.dot-red   { display:inline-block; width:8px; height:8px; border-radius:50%; background:#e74c3c; }
+
+
+/* Marker samolotu (div icon) */
+.plane-marker {
+    font-size: 22px;
+    line-height: 1;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
+    cursor: pointer;
+    user-select: none;
+}
+
+/* Marker wieży (div icon) */
+.tower-marker {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    border: 3px solid #555;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.85);
+    padding: 2px;
+}
+.tower-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-top: 2px;
+}
+
+/* Popup lotu */
+.flight-popup { font-family: 'Segoe UI', sans-serif; font-size: 0.9em; min-width: 220px; }
+.fp-header { padding: 6px 8px; font-size: 1em; margin-bottom: 6px; }
+.fp-table { width: 100%; border-collapse: collapse; }
+.fp-table td { padding: 3px 6px; border-bottom: 1px solid #eee; }
+.fp-table td:first-child { color: #888; font-size: 0.85em; }
+
+/* Panel agenta / województwa */
+.agent-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 0.83em; color: #ddd; }
+.agent-table th { background: rgba(255,255,255,0.1); padding: 5px 8px; font-weight: 600; text-align: left; }
+.agent-table td { padding: 4px 8px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.log-container { max-height: 160px; overflow-y: auto; font-size: 0.78em; }
+.log-entry { padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.07); color: #b0bec5; line-height: 1.4; }
+
+/* Strona historii */
+.history-table { width: 100%; border-collapse: collapse; background: #fff; font-size: 0.88em; }
+.history-table th { background: #f1f5f9; padding: 10px 12px; text-align: left; color: #475569; }
+.history-table td { padding: 8px 12px; border-bottom: 1px solid #e1e8f0; }
+.history-table tr:hover td { background: #f8fafc; }
+.badge-warn { background: #f39c12; color: #fff; padding: 1px 6px; border-radius: 10px; font-size: 0.8em; }
