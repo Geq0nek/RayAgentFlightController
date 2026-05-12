@@ -2,6 +2,8 @@
     "name": "ATC-Fullstack-System",
     "dockerComposeFile": "../docker-compose.yml",
     "service": "server", 
+    "runServices": ["server", "client"],
+    "overrideCommand": true,
     "workspaceFolder": "/workspace", 
     "customizations": {
         "vscode": {
