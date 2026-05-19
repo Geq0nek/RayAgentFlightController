@@ -104,9 +104,9 @@ class ATCManager:
         :param tick_interval:      Actual time (in seconds) between ticks.
         """
         # Lazy imports — these modules must be available in Ray workers' PYTHONPATH
-        from topology import AdjacencyMatrix
-        from aircraft_generator import AircraftGenerator
         from actor import SimulationClock, VoivodeshipActor
+        from database_log_service import DatabaseLogService
+        from neighbor_info_service import NeighborInfoService
 
         self.max_flights: int = max_flights
         self.simulation_speed: float = simulation_speed
@@ -135,8 +135,9 @@ class ATCManager:
         # ----------------------------------------------------------------
         # Simulation clock (shared singleton)
         # ----------------------------------------------------------------
-        from actor import SimulationClock, VoivodeshipActor
         self._clock = SimulationClock.remote(simulation_speed)
+        self._neighbor_info_service = NeighborInfoService.remote()
+        self._database_log_service = DatabaseLogService.remote()
 
         # ----------------------------------------------------------------
         # Creating voivodeship actors
@@ -146,7 +147,9 @@ class ATCManager:
                 name,
                 self._simulator.matrix,
                 self._simulator.generator,
-                simulation_speed,
+                simulation_speed=simulation_speed,
+                neighbor_info_service=self._neighbor_info_service,
+                database_log_service=self._database_log_service,
             )
             for name in self._voiv_names
         }
@@ -199,6 +202,13 @@ class ATCManager:
             self._neighbor_reg_futures = []
         self._running = True
         self._loop_task = asyncio.ensure_future(self._simulation_loop())
+        self._record_manager_log(
+            "MANAGER_STARTED",
+            "ATCManager simulation loop started.",
+            tick=0,
+            sim_time=0.0,
+            payload={"max_flights": self.max_flights, "tick_interval": self.tick_interval},
+        )
         logger.info("[ATCManager] Simulation started.")
         return "started"
 
@@ -213,6 +223,13 @@ class ATCManager:
                 await asyncio.wait_for(self._loop_task, timeout=10.0)
             except (asyncio.TimeoutError, asyncio.CancelledError):
                 self._loop_task.cancel()
+        sim_time, tick = await self._clock.get_time.remote()
+        self._record_manager_log(
+            "MANAGER_STOPPED",
+            "ATCManager simulation loop stopped.",
+            tick=tick,
+            sim_time=sim_time,
+        )
         logger.info("[ATCManager] Simulation stopped.")
         return "stopped"
 
@@ -245,6 +262,13 @@ class ATCManager:
         #    In an async Ray actor, ObjectRef is awaitable, so we don't block
         #    the event loop.
         sim_time, tick, delta_hours = await self._clock.advance.remote()
+        self._record_manager_log(
+            "TICK_STARTED",
+            f"Tick {tick} started for {len(self._actors)} voivodeship actors.",
+            tick=tick,
+            sim_time=sim_time,
+            payload={"delta_hours": delta_hours, "actor_count": len(self._actors)},
+        )
 
         # 2. Update all towers in parallel.
         #    asyncio.gather() allows the event loop to handle other tasks
@@ -272,14 +296,21 @@ class ATCManager:
                 self._active_flight_ids.pop(fid, None)
 
             # Update tracker (handoff changes owner)
-            for fid in summary.handed_off:
-                self._active_flight_ids[fid] = summary.voivodeship
+            for fid, target_voivodeship in summary.handoff_targets.items():
+                self._active_flight_ids[fid] = target_voivodeship
 
             per_voiv.append(summary.to_dict())
 
             if summary.warnings:
                 for w in summary.warnings:
                     logger.warning("[%s] %s", summary.voivodeship, w)
+                    self._record_manager_log(
+                        "ACTOR_WARNING",
+                        w,
+                        tick=tick,
+                        sim_time=sim_time,
+                        source_voivodeship=summary.voivodeship,
+                    )
 
         # 4. Spawn new flight (if space available) — async, doesn't block event loop
         current_total = len(self._active_flight_ids)
@@ -299,6 +330,14 @@ class ATCManager:
         self._tick_reports.append(report.to_dict())
         if len(self._tick_reports) > self._report_capacity:
             self._tick_reports = self._tick_reports[-self._report_capacity:]
+        self._record_manager_log(
+            "TICK_COMPLETED",
+            f"Tick {tick} completed: active={report.total_active}, "
+            f"handoff={total_handed}, arrived={total_arrived}, warnings={total_warnings}.",
+            tick=tick,
+            sim_time=sim_time,
+            payload=report.to_dict(),
+        )
 
     # ------------------------------------------------------------------
     # Flight generation — delegated to FlightSimulator
@@ -363,6 +402,15 @@ class ATCManager:
 
         await target_actor.add_aircraft.remote(aircraft, sim_time, tick)
         self._active_flight_ids[aircraft.id] = voiv_key
+        self._record_manager_log(
+            "MANUAL_FLIGHT_ROUTED",
+            f"Manual flight {aircraft.id}: {start} -> {dest} routed to {voiv_key}.",
+            tick=tick,
+            sim_time=sim_time,
+            target_voivodeship=voiv_key,
+            flight_id=aircraft.id,
+            payload={"start": start, "dest": dest},
+        )
         logger.info(
             "[ATCManager] Nowy lot %s: %s → %s (wieża: %s)",
             aircraft.id, start, dest, voiv_key,
@@ -390,6 +438,19 @@ class ATCManager:
 
         await target_actor.add_aircraft.remote(aircraft, sim_time, tick)
         self._active_flight_ids[aircraft.id] = voiv_key
+        self._record_manager_log(
+            "RANDOM_FLIGHT_ROUTED",
+            f"Random flight {aircraft.id}: {aircraft.starting_point} -> "
+            f"{aircraft.destination} routed to {voiv_key}.",
+            tick=tick,
+            sim_time=sim_time,
+            target_voivodeship=voiv_key,
+            flight_id=aircraft.id,
+            payload={
+                "start": aircraft.starting_point,
+                "dest": aircraft.destination,
+            },
+        )
         logger.info(
             "[ATCManager] Nowy lot %s: %s → %s (wieża: %s)",
             aircraft.id, aircraft.starting_point, aircraft.destination, voiv_key,
@@ -403,40 +464,55 @@ class ATCManager:
 
     async def get_all_flights(self) -> List[dict]:
         """
-        Returns snapshots of all active flights from all towers.
-        Safe to call between ticks.
+        Returns snapshots of all active flights from the shared neighbour cache.
+        This avoids polling every tower just to build API state.
 
         :returns: List of dicts (AircraftSnapshot.to_dict() format).
         """
-        refs = [a.get_aircraft_snapshots.remote() for a in self._actors.values()]
-        results = await asyncio.gather(*refs)
+        snapshots = await self._neighbor_info_service.get_all_snapshots.remote()
         flights: List[dict] = []
-        for voiv_flights in results:
-            flights.extend(voiv_flights)
+        for voivodeship in self._voiv_names:
+            flights.extend(snapshots.get(voivodeship, {}).get("active_aircraft", []))
         return flights
 
     async def get_flights_by_voivodeship(self, voivodeship: str) -> List[dict]:
         """
-        Returns flight snapshots from a specific voivodeship.
+        Returns flight snapshots from a specific voivodeship using the shared cache.
 
         :param voivodeship: Voivodeship key (e.g., ``'mazowieckie'``).
         :returns: List of dicts or empty list if voivodeship doesn't exist.
         """
-        actor = self._actors.get(voivodeship)
-        if actor is None:
+        if voivodeship not in self._actors:
             return []
-        return await actor.get_aircraft_snapshots.remote()
+        snapshot = await self._neighbor_info_service.get_snapshot.remote(voivodeship)
+        return snapshot.get("active_aircraft", []) if snapshot else []
 
     async def get_network_status(self) -> dict:
         """
-        Aggregate network status: number of flights per voivodeship,
-        neighbors, number of log entries.
+        Aggregate network status from NeighborInfoService snapshots.
+        The manager does not need to poll every tower for monitoring data.
 
         :returns: Dict with ``"voivodeships"`` key and list of statuses.
         """
-        status_refs = [a.get_status.remote() for a in self._actors.values()]
-        statuses = await asyncio.gather(*status_refs)
+        snapshots = await self._neighbor_info_service.get_all_snapshots.remote()
         sim_time_now, tick_now = await self._clock.get_time.remote()
+        statuses = []
+        for name in self._voiv_names:
+            snapshot = snapshots.get(name, {})
+            adjacent_names = sorted(self._simulator.matrix.adjacent_voivodeships.get(name, []))
+            statuses.append(
+                {
+                    "voivodeship": name,
+                    "aircraft_count": snapshot.get("aircraft_count", 0),
+                    "neighbors": snapshot.get("neighbors", adjacent_names),
+                    "adjacent_defined": snapshot.get("adjacent_defined", adjacent_names),
+                    "log_entries": snapshot.get("log_entries", 0),
+                    "snapshot_tick": snapshot.get("tick"),
+                    "snapshot_sim_time": snapshot.get("sim_time"),
+                    "recent_events": snapshot.get("recent_events", []),
+                    "warnings": snapshot.get("warnings", []),
+                }
+            )
         return {
             "voivodeships": statuses,
             "total_aircraft": sum(s["aircraft_count"] for s in statuses),
@@ -458,6 +534,30 @@ class ATCManager:
         if actor is None:
             return []
         return await actor.get_log.remote(last_n)
+
+    async def get_neighbor_activity(self, voivodeship: str) -> Dict[str, dict]:
+        """Return latest snapshots for neighbours of a specific voivodeship."""
+        if voivodeship not in self._actors:
+            return {}
+        adjacent_names = self._simulator.matrix.adjacent_voivodeships.get(voivodeship, [])
+        return await self._neighbor_info_service.get_snapshots.remote(adjacent_names)
+
+    async def get_persisted_logs(self, filters: Optional[dict] = None) -> List[dict]:
+        """Return logs persisted in PostgreSQL, filtered for the history view."""
+        filters = filters or {}
+        return await self._database_log_service.query.remote(**filters)
+
+    async def get_log_event_types(self) -> List[str]:
+        """Return persisted event types available for filtering."""
+        return await self._database_log_service.get_event_types.remote()
+
+    async def get_log_filter_options(self) -> dict:
+        """Return distinct persisted values available in log filters."""
+        return await self._database_log_service.get_filter_options.remote()
+
+    async def get_log_database_status(self) -> dict:
+        """Return PostgreSQL log service status."""
+        return await self._database_log_service.status.remote()
 
     def get_last_tick_reports(self, last_n: int = 10) -> List[dict]:
         """
@@ -489,6 +589,29 @@ class ATCManager:
     def get_voivodeship_names(self) -> List[str]:
         """Returns list of all voivodeship key names."""
         return self._voiv_names
+
+    def _record_manager_log(
+        self,
+        event_type: str,
+        message: str,
+        tick: Optional[int] = None,
+        sim_time: Optional[float] = None,
+        source_voivodeship: Optional[str] = None,
+        target_voivodeship: Optional[str] = None,
+        flight_id: Optional[str] = None,
+        payload: Optional[dict] = None,
+    ) -> None:
+        """Persist a structured manager-level event."""
+        self._database_log_service.record.remote(
+            event_type=event_type,
+            message=message,
+            tick=tick,
+            sim_time=sim_time,
+            source_voivodeship=source_voivodeship or "manager",
+            target_voivodeship=target_voivodeship,
+            flight_id=flight_id,
+            payload=payload or {},
+        )
 
 
 # ---------------------------------------------------------------------------

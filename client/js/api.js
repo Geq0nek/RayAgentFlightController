@@ -33,6 +33,12 @@ const ATC_API = {
         return r.json();
     },
 
+    /** Cached snapshots published by neighbouring towers */
+    async getNeighborActivity(voivodeship) {
+        const r = await fetch(`${BASE_URL}/neighbors/${voivodeship}`);
+        return r.json();
+    },
+
     /** Last n tower log entries */
     async getVoivodeshipLog(voivodeship, n = 50) {
         const r = await fetch(`${BASE_URL}/log/${voivodeship}?n=${n}`);
@@ -42,6 +48,40 @@ const ATC_API = {
     /** Last n tick reports from the entire network */
     async getTickReports(n = 30) {
         const r = await fetch(`${BASE_URL}/reports?n=${n}`);
+        return r.json();
+    },
+
+    /** Structured PostgreSQL-backed agent logs */
+    async getPersistedLogs(filters = {}) {
+        const params = new URLSearchParams();
+        Object.entries(filters).forEach(([key, value]) => {
+            if (Array.isArray(value)) {
+                value.filter(v => v !== undefined && v !== null && v !== "")
+                    .forEach(v => params.append(key, v));
+            } else if (value !== undefined && value !== null && value !== "") {
+                params.set(key, value);
+            }
+        });
+        const qs = params.toString();
+        const r = await fetch(`${BASE_URL}/logs${qs ? `?${qs}` : ""}`);
+        return r.json();
+    },
+
+    /** Event types stored in PostgreSQL logs */
+    async getLogEventTypes() {
+        const r = await fetch(`${BASE_URL}/logs/types`);
+        return r.json();
+    },
+
+    /** Distinct values available in all log filters */
+    async getLogFilterOptions() {
+        const r = await fetch(`${BASE_URL}/logs/options`);
+        return r.json();
+    },
+
+    /** PostgreSQL log service status */
+    async getLogDatabaseStatus() {
+        const r = await fetch(`${BASE_URL}/logs/status`);
         return r.json();
     },
 

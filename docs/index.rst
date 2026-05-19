@@ -14,6 +14,8 @@ in real-time, and detects in which voivodeship they are currently located.
    modules/flight_engine
    modules/actor
    modules/manager
+   modules/database_log_service
+   modules/neighbor_info_service
    modules/topology
 
 Index

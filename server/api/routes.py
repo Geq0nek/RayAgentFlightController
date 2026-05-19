@@ -7,7 +7,10 @@ GET  /api/status          → entire network status (tick, sim_time, number of f
 GET  /api/flights         → all active flights (snapshots)
 GET  /api/flights/<voiv>  → flights tracked by a specific tower
 GET  /api/voivodeships    → list of voivodeships with number of flights
+GET  /api/neighbors/<voiv> → latest cached snapshots of neighbouring towers
 GET  /api/log/<voiv>      → last 50 tower log entries
+GET  /api/logs            → PostgreSQL-backed structured agent logs
+GET  /api/logs/types      → event types available in persisted logs
 POST /api/spawn           → manual flight spawn  { "start": "WAW", "dest": "KRK" }
 POST /api/control/start   → start simulation
 POST /api/control/stop    → stop simulation
@@ -73,6 +76,13 @@ def get_flights_by_voivodeship(voivodeship: str):
     return jsonify(flights)
 
 
+@api.route("/neighbors/<voivodeship>")
+def get_neighbor_activity(voivodeship: str):
+    """Cached snapshots published by neighbouring towers."""
+    activity = ray.get(_manager().get_neighbor_activity.remote(voivodeship))
+    return jsonify({"voivodeship": voivodeship, "neighbors": activity})
+
+
 # ---------------------------------------------------------------------------
 # Agent logs
 # ---------------------------------------------------------------------------
@@ -83,6 +93,66 @@ def get_voivodeship_log(voivodeship: str):
     n = request.args.get("n", 50, type=int)
     log = ray.get(_manager().get_voivodeship_log.remote(voivodeship, n))
     return jsonify({"voivodeship": voivodeship, "log": log})
+
+
+@api.route("/logs")
+def get_persisted_logs():
+    """Structured logs persisted in PostgreSQL, with optional filters."""
+    sources = _multi_filter_values("source", "sources")
+    targets = _multi_filter_values("target", "targets")
+    event_types = _multi_filter_values("event_type", "event_types")
+    flight_ids = _multi_filter_values("flight_id", "flight_ids")
+    filters = {
+        "source_voivodeship": None if sources else request.args.get("source") or None,
+        "source_voivodeships": sources or None,
+        "target_voivodeship": None if targets else request.args.get("target") or None,
+        "target_voivodeships": targets or None,
+        "event_type": None if event_types else request.args.get("event_type") or None,
+        "event_types": event_types or None,
+        "flight_id": None if flight_ids else request.args.get("flight_id") or None,
+        "flight_ids": flight_ids or None,
+        "text": request.args.get("q") or None,
+        "tick_from": request.args.get("tick_from", type=int),
+        "tick_to": request.args.get("tick_to", type=int),
+        "limit": request.args.get("limit", 100, type=int),
+    }
+    logs = ray.get(_manager().get_persisted_logs.remote(filters))
+    return jsonify({"logs": logs})
+
+
+def _multi_filter_values(*names: str) -> list[str]:
+    """Read repeated query params and comma-separated values for one filter."""
+    values = []
+    for name in names:
+        values.extend(request.args.getlist(name))
+    result = [
+        value.strip()
+        for csv_value in values
+        for value in csv_value.split(",")
+        if value.strip()
+    ]
+    return list(dict.fromkeys(result))
+
+
+@api.route("/logs/types")
+def get_log_event_types():
+    """List event types currently stored in PostgreSQL logs."""
+    event_types = ray.get(_manager().get_log_event_types.remote())
+    return jsonify(event_types)
+
+
+@api.route("/logs/options")
+def get_log_filter_options():
+    """Distinct values available for all PostgreSQL log filters."""
+    options = ray.get(_manager().get_log_filter_options.remote())
+    return jsonify(options)
+
+
+@api.route("/logs/status")
+def get_log_database_status():
+    """Health information for the PostgreSQL log writer."""
+    status = ray.get(_manager().get_log_database_status.remote())
+    return jsonify(status)
 
 
 @api.route("/reports")

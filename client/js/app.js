@@ -74,19 +74,53 @@ async function loadHistoryPage() {
     container.innerHTML = '<p style="color:#888">Loading...</p>';
 
     let reports = [];
+    let filterOptions = {};
+    let persisted = { logs: [] };
+    let dbStatus = {};
     try {
-        reports = await ATC_API.getTickReports(20);
+        [reports, filterOptions, persisted, dbStatus] = await Promise.all([
+            ATC_API.getTickReports(20),
+            ATC_API.getLogFilterOptions(),
+            ATC_API.getPersistedLogs({ limit: 100 }),
+            ATC_API.getLogDatabaseStatus(),
+        ]);
     } catch (e) {
         container.innerHTML = `<p style="color:#c0392b">API connection error: ${e.message}</p>`;
         return;
     }
 
-    if (!reports || reports.length === 0) {
-        container.innerHTML = '<p style="color:#888">No reports. Start simulation.</p>';
-        return;
-    }
+    container.innerHTML = _renderHistoryPage({
+        reports: reports || [],
+        filterOptions: filterOptions || {},
+        logs: persisted.logs || [],
+        dbStatus: dbStatus || {},
+    });
+    _bindHistoryFilters();
+}
 
-    const rows = reports.slice().reverse().map(r => {
+function _renderHistoryPage({ reports, filterOptions, logs, dbStatus }) {
+    const dbOk = dbStatus && dbStatus.last_error ? false : true;
+    const sourceOptions = filterOptions.sources || [];
+    const targetOptions = filterOptions.targets || [];
+    const eventOptions = filterOptions.event_types || [];
+    const flightOptions = filterOptions.flight_ids || [];
+
+    const logRows = logs.length ? logs.map(log => `
+        <tr>
+            <td>${log.id}</td>
+            <td>${log.tick ?? '—'}</td>
+            <td>${_escapeHtml(log.event_type || '')}</td>
+            <td>${_escapeHtml(log.source_voivodeship || '—')}</td>
+            <td>${_escapeHtml(log.target_voivodeship || '—')}</td>
+            <td>${_escapeHtml(log.flight_id || '—')}</td>
+            <td>${_escapeHtml(log.message || '')}</td>
+            <td>${_formatLogTime(log.created_at)}</td>
+        </tr>
+    `).join('') : `
+        <tr><td colspan="8" class="empty-cell">Brak zapisanych logów dla wybranych filtrów.</td></tr>
+    `;
+
+    const reportRows = reports.length ? reports.slice().reverse().map(r => {
         const warnings = r.total_warnings > 0
             ? `<span class="badge badge-warn">${r.total_warnings} ost.</span>` : '';
         return `
@@ -98,9 +132,50 @@ async function loadHistoryPage() {
                 <td>${r.total_arrived}</td>
                 <td>${warnings || r.total_warnings}</td>
             </tr>`;
-    }).join('');
+    }).join('') : `
+        <tr><td colspan="6" class="empty-cell">Brak raportów ticków. Uruchom symulację.</td></tr>
+    `;
 
-    container.innerHTML = `
+    return `
+        <div class="history-toolbar">
+            <div class="filter-grid">
+                ${_renderMultiSelect('history-source', 'Źródło', sourceOptions, 'źródła')}
+                ${_renderMultiSelect('history-target', 'Cel', targetOptions, 'cele')}
+                ${_renderMultiSelect('history-event-type', 'Typ', eventOptions, 'typy')}
+                ${_renderMultiSelect('history-flight-id', 'ID lotu', flightOptions, 'loty')}
+                <label>Od ticka
+                    <input id="history-tick-from" type="number" min="0">
+                </label>
+                <label>Do ticka
+                    <input id="history-tick-to" type="number" min="0">
+                </label>
+                <label>Tekst
+                    <input id="history-query" type="text" placeholder="handoff, snapshot...">
+                </label>
+                <label>Limit
+                    <input id="history-limit" type="number" min="1" max="500" value="100">
+                </label>
+            </div>
+            <button id="history-apply-filters">Filtruj</button>
+            <span class="${dbOk ? 'db-status-ok' : 'db-status-warn'}">
+                DB: ${dbOk ? 'aktywny' : _escapeHtml(dbStatus.last_error || 'błąd')}
+            </span>
+        </div>
+
+        <h3 class="history-section-title">Logi agentów z PostgreSQL</h3>
+        <div class="table-scroll">
+            <table class="history-table history-log-table">
+                <thead>
+                    <tr>
+                        <th>ID</th><th>Tick</th><th>Typ</th><th>Źródło</th>
+                        <th>Cel</th><th>Lot</th><th>Wiadomość</th><th>Czas</th>
+                    </tr>
+                </thead>
+                <tbody id="history-log-body">${logRows}</tbody>
+            </table>
+        </div>
+
+        <h3 class="history-section-title">Raporty ticków</h3>
         <table class="history-table">
             <thead>
                 <tr>
@@ -108,8 +183,139 @@ async function loadHistoryPage() {
                     <th>Handoff-y</th><th>Przyloty</th><th>Ostrzeżenia</th>
                 </tr>
             </thead>
-            <tbody>${rows}</tbody>
+            <tbody>${reportRows}</tbody>
         </table>`;
+}
+
+function _renderMultiSelect(id, title, options, pluralLabel) {
+    const rows = options.map((value, index) => {
+        const inputId = `${id}-${index}`;
+        return `<label class="multi-option" for="${inputId}">
+            <input id="${inputId}" type="checkbox" value="${_escapeHtml(value)}">
+            <span>${_escapeHtml(value)}</span>
+        </label>`;
+    }).join('');
+    return `
+        <div class="filter-field">
+            <span>${title}</span>
+            <div class="multi-select" id="${id}" data-many-label="${pluralLabel}">
+                <button class="multi-select-toggle" type="button" aria-expanded="false">
+                    <span class="multi-select-label">Wszystkie</span>
+                    <span class="multi-select-arrow">v</span>
+                </button>
+                <div class="multi-select-menu" hidden>
+                    ${rows || '<div class="multi-empty">Brak opcji</div>'}
+                </div>
+            </div>
+        </div>`;
+}
+
+function _bindHistoryFilters() {
+    const btn = document.getElementById('history-apply-filters');
+    if (btn) btn.addEventListener('click', applyHistoryFilters);
+    document.querySelectorAll('.multi-select').forEach(_bindHistoryMultiDropdown);
+    const query = document.getElementById('history-query');
+    if (query) {
+        query.addEventListener('keydown', event => {
+            if (event.key === 'Enter') applyHistoryFilters();
+        });
+    }
+}
+
+function _bindHistoryMultiDropdown(dropdown) {
+    if (!dropdown) return;
+    const toggle = dropdown.querySelector('.multi-select-toggle');
+    const menu = dropdown.querySelector('.multi-select-menu');
+    const label = dropdown.querySelector('.multi-select-label');
+    const checkboxes = Array.from(dropdown.querySelectorAll('input[type="checkbox"]'));
+    const manyLabel = dropdown.dataset.manyLabel || 'opcje';
+
+    const updateLabel = () => {
+        const selected = checkboxes.filter(input => input.checked).map(input => input.value);
+        if (selected.length === 0) {
+            label.textContent = 'Wszystkie';
+        } else if (selected.length === 1) {
+            label.textContent = selected[0];
+        } else {
+            label.textContent = `${selected.length} ${manyLabel}`;
+        }
+    };
+
+    toggle.addEventListener('click', event => {
+        event.stopPropagation();
+        const isOpen = !menu.hidden;
+        menu.hidden = isOpen;
+        toggle.setAttribute('aria-expanded', String(!isOpen));
+    });
+
+    menu.addEventListener('click', event => event.stopPropagation());
+    checkboxes.forEach(input => input.addEventListener('change', updateLabel));
+
+    document.addEventListener('click', event => {
+        if (!dropdown.contains(event.target)) {
+            menu.hidden = true;
+            toggle.setAttribute('aria-expanded', 'false');
+        }
+    });
+}
+
+async function applyHistoryFilters() {
+    const body = document.getElementById('history-log-body');
+    if (!body) return;
+    body.innerHTML = '<tr><td colspan="8" class="empty-cell">Ładowanie...</td></tr>';
+    try {
+        const data = await ATC_API.getPersistedLogs(_historyFilterValues());
+        const rows = (data.logs || []).map(log => `
+            <tr>
+                <td>${log.id}</td>
+                <td>${log.tick ?? '—'}</td>
+                <td>${_escapeHtml(log.event_type || '')}</td>
+                <td>${_escapeHtml(log.source_voivodeship || '—')}</td>
+                <td>${_escapeHtml(log.target_voivodeship || '—')}</td>
+                <td>${_escapeHtml(log.flight_id || '—')}</td>
+                <td>${_escapeHtml(log.message || '')}</td>
+                <td>${_formatLogTime(log.created_at)}</td>
+            </tr>
+        `).join('');
+        body.innerHTML = rows || '<tr><td colspan="8" class="empty-cell">Brak zapisanych logów dla wybranych filtrów.</td></tr>';
+    } catch (e) {
+        body.innerHTML = `<tr><td colspan="8" class="empty-cell error-cell">API connection error: ${_escapeHtml(e.message)}</td></tr>`;
+    }
+}
+
+function _historyFilterValues() {
+    return {
+        source: _selectedMultiValues('history-source'),
+        target: _selectedMultiValues('history-target'),
+        event_types: Array.from(document.querySelectorAll('#history-event-type input[type="checkbox"]:checked'))
+            .map(input => input.value),
+        flight_id: _selectedMultiValues('history-flight-id'),
+        tick_from: document.getElementById('history-tick-from')?.value || '',
+        tick_to: document.getElementById('history-tick-to')?.value || '',
+        q: document.getElementById('history-query')?.value.trim() || '',
+        limit: document.getElementById('history-limit')?.value || 100,
+    };
+}
+
+function _selectedMultiValues(id) {
+    return Array.from(document.querySelectorAll(`#${id} input[type="checkbox"]:checked`))
+        .map(input => input.value);
+}
+
+function _formatLogTime(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return _escapeHtml(value);
+    return date.toLocaleString('pl-PL');
+}
+
+function _escapeHtml(value) {
+    return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
 }
 
 // ============================================================
@@ -118,4 +324,3 @@ async function loadHistoryPage() {
 document.addEventListener('DOMContentLoaded', () => {
     startRadarPolling(2000);
 });
-

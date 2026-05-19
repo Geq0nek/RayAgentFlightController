@@ -39,6 +39,10 @@ class MapManager {
         this._voivPolygons  = {};      // voivodeship_key → L.GeoJSON layer
         this._selectedVoiv  = null;    // currently highlighted voivodeship
         this._voivData      = {};      // voivodeship_key → data from YAML (airports)
+        this._activeAirportPanel = null;
+        this._activeAgentPanelVoiv = null;
+        this._airportPanelRefreshSeq = 0;
+        this._agentPanelRefreshSeq = 0;
 
         // Color palette for towers (16 voivodeships)
         this._palette = [
@@ -235,6 +239,9 @@ class MapManager {
                 this._flightMarkers[f.id] = marker;
             }
         });
+
+        this._refreshActiveAirportPanelFromRadar(flights);
+        this._refreshActiveAgentPanelFromRadar(flights);
     }
 
     /** Aircraft icon (div icon with agent color) */
@@ -285,14 +292,34 @@ class MapManager {
     
     async _renderAirportPanel(airport, voivodeshipName) {
         if (!this.panel || !this.content) return;
+        this._activeAgentPanelVoiv = null;
+        this._activeAirportPanel = { airport, voivodeshipName };
+        this.panel.classList.add('active');
+        await this._refreshAirportPanel(airport, voivodeshipName);
+        this.map.flyTo([airport.location.latitude, airport.location.longitude], 7);
+    }
+
+    async _refreshAirportPanel(airport, voivodeshipName, flightsFromRadar = null) {
+        if (!this.panel || !this.content) return;
+        if (!this._activeAirportPanel || this._activeAirportPanel.voivodeshipName !== voivodeshipName) return;
+
+        const refreshSeq = ++this._airportPanelRefreshSeq;
 
         // Fetch active flights for this voivodeship
         let flights = [];
-        try {
-            flights = await ATC_API.getFlightsByVoivodeship(voivodeshipName);
-        } catch (e) {
-            /* API may not be available yet */
+        if (flightsFromRadar !== null) {
+            flights = flightsFromRadar;
+        } else {
+            try {
+                flights = await ATC_API.getFlightsByVoivodeship(voivodeshipName);
+            } catch (e) {
+                /* API may not be available yet */
+            }
         }
+
+        if (refreshSeq !== this._airportPanelRefreshSeq) return;
+        if (!this._activeAirportPanel || this._activeAirportPanel.voivodeshipName !== voivodeshipName) return;
+        if (!this.panel.classList.contains('active')) return;
 
         const flightRows = flights.length
             ? flights.map(f => `
@@ -318,7 +345,12 @@ class MapManager {
                 <hr>
             </div>
             
-            <h3 style="margin-top:16px; color:#fff; margin-bottom: 10px;">✈ Aktywne loty w tym województwie</h3>
+            <h3 style="margin-top:16px; color:#fff; margin-bottom: 10px;">
+                ✈ Aktywne loty w tym województwie
+                <span style="color:#94a3b8; font-size:0.72em; margin-left:8px;">
+                    odświeżono: ${new Date().toLocaleTimeString('pl-PL')}
+                </span>
+            </h3>
             <table class="agent-table">
                 <thead>
                     <tr><th>ID</th><th>Trasa</th><th>Prędkość</th><th>Wysokość</th></tr>
@@ -326,26 +358,41 @@ class MapManager {
                 <tbody>${flightRows}</tbody>
             </table>
         `;
-
-        this.panel.classList.add('active');
-        this.map.flyTo([airport.location.latitude, airport.location.longitude], 7);
     }
 
     /** Opens panel with information about the agent / voivodeship tower */
     async _showAgentPanel(voivKey) {
         if (!this.panel || !this.content) return;
+        this._activeAirportPanel = null;
+        this._activeAgentPanelVoiv = voivKey;
         this._highlightVoivodeship(voivKey);
+        this.panel.classList.add('active');
+        await this._refreshAgentPanel(voivKey);
+    }
 
+    async _refreshAgentPanel(voivKey, flightsFromRadar = null) {
+        if (!this.panel || !this.content) return;
+        if (this._activeAgentPanelVoiv !== voivKey) return;
+
+        const refreshSeq = ++this._agentPanelRefreshSeq;
         const color = this._voivColors[voivKey] || "#3498db";
 
         // Fetch flights and log in parallel
         let flights = [], logData = { log: [] };
         try {
-            [flights, logData] = await Promise.all([
-                ATC_API.getFlightsByVoivodeship(voivKey),
-                ATC_API.getVoivodeshipLog(voivKey, 10),
-            ]);
+            if (flightsFromRadar !== null) {
+                flights = flightsFromRadar;
+                logData = await ATC_API.getVoivodeshipLog(voivKey, 10);
+            } else {
+                [flights, logData] = await Promise.all([
+                    ATC_API.getFlightsByVoivodeship(voivKey),
+                    ATC_API.getVoivodeshipLog(voivKey, 10),
+                ]);
+            }
         } catch (e) { /* API may not be available yet */ }
+
+        if (refreshSeq !== this._agentPanelRefreshSeq) return;
+        if (this._activeAgentPanelVoiv !== voivKey || !this.panel.classList.contains('active')) return;
 
         const flightRows = flights.length
             ? flights.map(f => `
@@ -365,7 +412,12 @@ class MapManager {
             <h2 style="border-left:5px solid ${color}; padding-left:10px; text-transform:uppercase;">
                 🗼 ${voivKey.replace(/_/g, " ")}
             </h2>
-            <p style="color:${color}; font-weight:600;">Aktywne loty: ${flights.length}</p>
+            <p style="color:${color}; font-weight:600;">
+                Aktywne loty: ${flights.length}
+                <span style="color:#94a3b8; font-size:0.82em; margin-left:8px;">
+                    odświeżono: ${new Date().toLocaleTimeString('pl-PL')}
+                </span>
+            </p>
 
             <table class="agent-table">
                 <thead>
@@ -377,8 +429,20 @@ class MapManager {
             <h3 style="margin-top:16px; color:#555;">📋 Ostatnie zdarzenia</h3>
             <div class="log-container">${logRows}</div>
         `;
+    }
 
-        this.panel.classList.add('active');
+    _refreshActiveAirportPanelFromRadar(flights) {
+        if (!this._activeAirportPanel || !this.panel || !this.panel.classList.contains('active')) return;
+        const { airport, voivodeshipName } = this._activeAirportPanel;
+        const panelFlights = flights.filter(f => f.actual_voivodeship === voivodeshipName);
+        this._refreshAirportPanel(airport, voivodeshipName, panelFlights);
+    }
+
+    _refreshActiveAgentPanelFromRadar(flights) {
+        const voivKey = this._activeAgentPanelVoiv;
+        if (!voivKey || !this.panel || !this.panel.classList.contains('active')) return;
+        const panelFlights = flights.filter(f => f.actual_voivodeship === voivKey);
+        this._refreshAgentPanel(voivKey, panelFlights);
     }
 
     /** Highlights selected voivodeship, resets previous */
@@ -397,4 +461,3 @@ class MapManager {
 
 const mapRadar = new MapManager('map');
 mapRadar.init();
-

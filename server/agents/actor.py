@@ -15,16 +15,16 @@ VoivodeshipActor (Ray actor)
       2. Moves every tracked aircraft along its great-circle route.
       3. Detects boundary crossings via GeoJSON point-in-polygon.
       4. Hands off aircraft that crossed the boundary to the correct
-         neighbouring actor using a synchronous Ray call — the handoff
-         carries the same (sim_time, tick) stamp to guarantee causal ordering.
+         neighbouring actor using an awaited Ray call — the handoff carries
+         the same (sim_time, tick) stamp to guarantee causal ordering.
       5. Returns a tick summary to the manager.
 
 Communication contract
 ----------------------
   manager calls:   clock.advance()          → (sim_time, tick, delta_hours)
   manager calls:   actor.update.remote(...) → TickSummary   (all actors in parallel)
-  actor A calls:   ray.get(actor_B.accept_aircraft.remote(aircraft, sim_time, tick))
-                                             → bool          (synchronous within the tick)
+  actor A awaits:  actor_B.accept_aircraft.remote(aircraft, sim_time, tick)
+                                             → bool          (confirmed within the tick)
 """
 
 from __future__ import annotations
@@ -32,6 +32,7 @@ from __future__ import annotations
 import datetime
 import logging
 import time
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
@@ -186,6 +187,7 @@ class TickSummary:
     sim_time: float
     active_count: int
     handed_off: List[str] = field(default_factory=list)
+    handoff_targets: Dict[str, str] = field(default_factory=dict)
     arrived: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
 
@@ -196,6 +198,7 @@ class TickSummary:
             "sim_time": self.sim_time,
             "active_count": self.active_count,
             "handed_off": self.handed_off,
+            "handoff_targets": self.handoff_targets,
             "arrived": self.arrived,
             "warnings": self.warnings,
         }
@@ -217,9 +220,11 @@ class VoivodeshipActor:
         each actor holds direct Ray handles to its geographical neighbours.
     3.  On every simulation tick the manager calls ``update()`` on all actors
         concurrently (``ray.get([a.update.remote(...) for a in actors])``).
-    4.  Within ``update()``, aircraft that cross a border trigger a synchronous
-        ``ray.get(neighbor.accept_aircraft.remote(...))`` call so the handoff
-        is committed before the tick completes.
+    4.  Within ``update()``, aircraft that cross a border trigger an awaited
+        ``neighbor.accept_aircraft.remote(...)`` call so the handoff is committed
+        before the tick completes.
+    5.  Each actor publishes a compact local snapshot to NeighborInfoService,
+        so adjacent actors can inspect the latest known neighbour activity.
 
     Time synchronisation
     --------------------
@@ -233,6 +238,8 @@ class VoivodeshipActor:
         topology,          # AdjacencyMatrix instance
         generator,         # AircraftGenerator instance
         simulation_speed: float = 60.0,
+        neighbor_info_service=None,
+        database_log_service=None,
         log_capacity: int = 500,
     ) -> None:
         """
@@ -248,6 +255,8 @@ class VoivodeshipActor:
         self._topology = topology
         self._generator = generator
         self.simulation_speed: float = simulation_speed
+        self._neighbor_info_service = neighbor_info_service
+        self._database_log_service = database_log_service
 
         # Neighbour voivodeship names derived from the static adjacency map
         self.adjacent_names: List[str] = topology.adjacent_voivodeships.get(name, [])
@@ -259,6 +268,9 @@ class VoivodeshipActor:
         # Populated via register_neighbors() after all actors are created.
         self._neighbors: Dict[str, "VoivodeshipActor"] = {}
 
+        # Latest published snapshots fetched from neighbouring towers.
+        self._neighbor_activity: Dict[str, dict] = {}
+
         # Internal event log
         self._log: List[str] = []
         self._log_capacity: int = log_capacity
@@ -269,7 +281,7 @@ class VoivodeshipActor:
     # Setup
     # ------------------------------------------------------------------
 
-    def register_neighbors(
+    async def register_neighbors(
         self,
         neighbor_handles: Dict[str, "VoivodeshipActor"],
     ) -> None:
@@ -285,13 +297,16 @@ class VoivodeshipActor:
             f"{sorted(neighbor_handles.keys())}",
             tick=0,
             sim_time=0.0,
+            event_type="NEIGHBORS_REGISTERED",
+            payload={"neighbors": sorted(neighbor_handles.keys())},
         )
+        await self._publish_neighbor_snapshot(tick=0, sim_time=0.0)
 
     # ------------------------------------------------------------------
     # Aircraft management — inbound
     # ------------------------------------------------------------------
 
-    def accept_aircraft(
+    async def accept_aircraft(
         self,
         aircraft,
         sim_time: float,
@@ -300,8 +315,8 @@ class VoivodeshipActor:
         """
         Receive an aircraft handed off by a neighbouring tower.
 
-        Called synchronously (via ``ray.get``) by the sending actor so that
-        ownership transfer is atomic within the current tick.
+        Awaited by the sending actor so that ownership transfer is atomic within
+        the current tick.
 
         :param aircraft:  Aircraft instance (serialised by Ray / pickle).
         :param sim_time:  Simulation time at which the transfer occurred.
@@ -318,11 +333,24 @@ class VoivodeshipActor:
             f"{previous_voivodeship} → {self.name} "
             f"(dest={aircraft.destination})"
         )
-        self._append_log(msg, tick=tick, sim_time=sim_time)
+        self._append_log(
+            msg,
+            tick=tick,
+            sim_time=sim_time,
+            event_type="AIRCRAFT_ACCEPTED",
+            source_voivodeship=previous_voivodeship,
+            target_voivodeship=self.name,
+            flight_id=aircraft.id,
+            payload={
+                "destination": aircraft.destination,
+                "starting_point": aircraft.starting_point,
+            },
+        )
         self._logger.info(msg)
+        await self._publish_neighbor_snapshot(tick=tick, sim_time=sim_time)
         return True
 
-    def add_aircraft(
+    async def add_aircraft(
         self,
         aircraft,
         sim_time: float = 0.0,
@@ -343,8 +371,21 @@ class VoivodeshipActor:
             f"SPAWN   {aircraft.id:>10} : "
             f"{aircraft.starting_point} → {aircraft.destination}"
         )
-        self._append_log(msg, tick=tick, sim_time=sim_time)
+        self._append_log(
+            msg,
+            tick=tick,
+            sim_time=sim_time,
+            event_type="AIRCRAFT_SPAWNED",
+            flight_id=aircraft.id,
+            payload={
+                "starting_point": aircraft.starting_point,
+                "destination": aircraft.destination,
+                "speed": aircraft.speed,
+                "height": aircraft.height,
+            },
+        )
         self._logger.info(msg)
+        await self._publish_neighbor_snapshot(tick=tick, sim_time=sim_time)
 
     # ------------------------------------------------------------------
     # Core tick
@@ -365,10 +406,9 @@ class VoivodeshipActor:
            great-circle route by ``speed × delta_hours`` km.
         2. Detect whether the new position is still inside this voivodeship
            using GeoJSON point-in-polygon (AircraftGenerator.actual_voivodeship).
-        3. If the aircraft crossed into a neighbouring voivodeship, call
-           ``ray.get(neighbor.accept_aircraft.remote(...))`` — the synchronous
-           call ensures the receiving tower confirms ownership before this
-           tick returns.
+        3. If the aircraft crossed into a neighbouring voivodeship, await
+           ``neighbor.accept_aircraft.remote(...)`` so the receiving tower
+           confirms ownership before this tick returns.
         4. If the aircraft has reached its destination, mark it ARRIVED.
 
         :param sim_time:    Current simulation time in seconds (from SimulationClock).
@@ -385,6 +425,8 @@ class VoivodeshipActor:
             active_count=0,
         )
 
+        await self._refresh_neighbor_activity(tick=tick, sim_time=sim_time)
+
         airports_data = self._topology.airports_data
 
         for aircraft_id, aircraft in list(self._aircraft.items()):
@@ -393,8 +435,15 @@ class VoivodeshipActor:
 
             dest_data = airports_data.get(aircraft.destination)
             if dest_data is None:
-                summary.warnings.append(
-                    f"Unknown destination {aircraft.destination} for {aircraft_id}"
+                warning = f"Unknown destination {aircraft.destination} for {aircraft_id}"
+                summary.warnings.append(warning)
+                self._append_log(
+                    warning,
+                    tick=tick,
+                    sim_time=sim_time,
+                    event_type="UNKNOWN_DESTINATION",
+                    flight_id=aircraft_id,
+                    payload={"destination": aircraft.destination},
                 )
                 continue
 
@@ -408,6 +457,21 @@ class VoivodeshipActor:
                 dest_lon,
             )
             step_distance: float = aircraft.speed * delta_hours
+            self._append_log(
+                f"[TICK {tick:>6} | T={sim_time:>10.1f}s] "
+                f"TRACK   {aircraft_id:>10} : {dist_to_go:.2f}km to {aircraft.destination}",
+                tick=tick,
+                sim_time=sim_time,
+                event_type="AIRCRAFT_TRACKED",
+                flight_id=aircraft_id,
+                payload={
+                    "destination": aircraft.destination,
+                    "distance_to_destination_km": round(dist_to_go, 3),
+                    "step_distance_km": round(step_distance, 3),
+                    "current_lat": aircraft.current_lat,
+                    "current_lon": aircraft.current_lon,
+                },
+            )
 
             if dist_to_go <= step_distance:
                 # --------------------------------------------------------
@@ -429,6 +493,12 @@ class VoivodeshipActor:
                     f"ARRIVED {aircraft_id:>10} at {aircraft.destination}",
                     tick=tick,
                     sim_time=sim_time,
+                    event_type="AIRCRAFT_ARRIVED",
+                    flight_id=aircraft_id,
+                    payload={
+                        "destination": aircraft.destination,
+                        "arrival_voivodeship": aircraft.actual_voivodeship,
+                    },
                 )
                 del self._aircraft[aircraft_id]
 
@@ -465,6 +535,11 @@ class VoivodeshipActor:
                     aircraft.actual_voivodeship = new_voivodeship or self.name
 
         summary.active_count = len(self._aircraft)
+        await self._publish_neighbor_snapshot(
+            tick=tick,
+            sim_time=sim_time,
+            summary=summary,
+        )
         return summary
 
     # ------------------------------------------------------------------
@@ -483,8 +558,8 @@ class VoivodeshipActor:
         """
         Transfer an aircraft to the correct neighbouring tower.
 
-        The call to ``accept_aircraft`` is wrapped in ``ray.get()`` so that
-        the transfer is *synchronous and confirmed* before this tick returns.
+        The call to ``accept_aircraft`` is awaited so the transfer is confirmed
+        before this tick returns.
         This guarantees that no tick boundary can leave an aircraft untracked.
 
         If the target is not a direct neighbour (e.g. a jump over a small
@@ -493,19 +568,39 @@ class VoivodeshipActor:
         """
         if target_voivodeship in self._neighbors:
             target_actor = self._neighbors[target_voivodeship]
-            # Synchronous call — blocks until the neighbour confirms ownership
+            request_msg = (
+                f"[TICK {tick:>6} | T={sim_time:>10.1f}s] "
+                f"HANDOFF REQUEST {aircraft_id:>10} : {self.name} → {target_voivodeship}"
+            )
+            self._append_log(
+                request_msg,
+                tick=tick,
+                sim_time=sim_time,
+                event_type="HANDOFF_REQUESTED",
+                target_voivodeship=target_voivodeship,
+                flight_id=aircraft_id,
+                payload={
+                    "destination": aircraft.destination,
+                    "current_lat": aircraft.current_lat,
+                    "current_lon": aircraft.current_lon,
+                },
+            )
+            # Await until the neighbour confirms ownership.
             accepted: bool = await target_actor.accept_aircraft.remote(
                 aircraft, sim_time, tick
             )
             if accepted:
                 del self._aircraft[aircraft_id]
                 summary.handed_off.append(aircraft_id)
+                summary.handoff_targets[aircraft_id] = target_voivodeship
+                event_type = "HANDOFF_COMPLETED"
                 msg = (
                     f"[TICK {tick:>6} | T={sim_time:>10.1f}s] "
                     f"HANDOFF {aircraft_id:>10} : "
                     f"{self.name} → {target_voivodeship}"
                 )
             else:
+                event_type = "HANDOFF_REJECTED"
                 msg = (
                     f"[TICK {tick:>6} | T={sim_time:>10.1f}s] "
                     f"HANDOFF REJECTED for {aircraft_id} to {target_voivodeship}"
@@ -521,10 +616,19 @@ class VoivodeshipActor:
                 f"'{target_voivodeship}' from '{self.name}'. "
                 f"Known neighbours: {sorted(self._neighbors.keys())}"
             )
+            event_type = "HANDOFF_NON_ADJACENT"
             summary.warnings.append(msg)
             self._logger.warning(msg)
 
-        self._append_log(msg, tick=tick, sim_time=sim_time)
+        self._append_log(
+            msg,
+            tick=tick,
+            sim_time=sim_time,
+            event_type=event_type,
+            target_voivodeship=target_voivodeship,
+            flight_id=aircraft_id,
+            payload={"accepted": target_voivodeship in self._neighbors and aircraft_id in summary.handoff_targets},
+        )
         self._logger.info(msg)
 
     # ------------------------------------------------------------------
@@ -550,7 +654,21 @@ class VoivodeshipActor:
             "neighbors": sorted(self._neighbors.keys()),
             "adjacent_defined": sorted(self.adjacent_names),
             "log_entries": len(self._log),
+            "known_neighbor_activity": {
+                name: {
+                    "tick": snapshot.get("tick"),
+                    "aircraft_count": snapshot.get("aircraft_count", 0),
+                    "warnings": snapshot.get("warnings", []),
+                    "recent_events": snapshot.get("recent_events", []),
+                }
+                for name, snapshot in self._neighbor_activity.items()
+            },
         }
+
+    async def get_neighbor_activity(self) -> Dict[str, dict]:
+        """Return the latest published snapshots from adjacent towers."""
+        await self._refresh_neighbor_activity()
+        return deepcopy(self._neighbor_activity)
 
     def get_log(self, last_n: int = 50) -> List[str]:
         """
@@ -564,9 +682,94 @@ class VoivodeshipActor:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _append_log(self, message: str, tick: int, sim_time: float) -> None:
+    def _append_log(
+        self,
+        message: str,
+        tick: int,
+        sim_time: float,
+        event_type: str = "AGENT_EVENT",
+        source_voivodeship: Optional[str] = None,
+        target_voivodeship: Optional[str] = None,
+        flight_id: Optional[str] = None,
+        payload: Optional[dict] = None,
+    ) -> None:
         """Append a message to the rolling event log."""
         self._log.append(message)
         if len(self._log) > self._log_capacity:
             # Drop oldest entries to cap memory usage
             self._log = self._log[-self._log_capacity:]
+        if self._database_log_service is not None:
+            self._database_log_service.record.remote(
+                event_type=event_type,
+                message=message,
+                tick=tick,
+                sim_time=sim_time,
+                source_voivodeship=source_voivodeship or self.name,
+                target_voivodeship=target_voivodeship,
+                flight_id=flight_id,
+                payload=payload or {},
+            )
+
+    async def _refresh_neighbor_activity(
+        self,
+        tick: int = 0,
+        sim_time: float = 0.0,
+    ) -> None:
+        """Fetch the latest published snapshots for all adjacent neighbours."""
+        if self._neighbor_info_service is None or not self.adjacent_names:
+            self._neighbor_activity = {}
+            return
+        self._neighbor_activity = await self._neighbor_info_service.get_snapshots.remote(
+            self.adjacent_names
+        )
+        self._append_log(
+            f"[TICK {tick:>6} | T={sim_time:>10.1f}s] REFRESH neighbor activity: "
+            f"{sorted(self._neighbor_activity.keys())}",
+            tick=tick,
+            sim_time=sim_time,
+            event_type="NEIGHBOR_ACTIVITY_REFRESHED",
+            payload={
+                "requested_neighbors": sorted(self.adjacent_names),
+                "available_snapshots": sorted(self._neighbor_activity.keys()),
+            },
+        )
+
+    async def _publish_neighbor_snapshot(
+        self,
+        tick: int,
+        sim_time: float,
+        summary: Optional[TickSummary] = None,
+    ) -> None:
+        """Publish this tower's latest local state for neighbouring actors."""
+        if self._neighbor_info_service is None:
+            return
+        await self._neighbor_info_service.publish.remote(
+            self.name,
+            {
+                "tick": tick,
+                "sim_time": sim_time,
+                "aircraft_count": len(self._aircraft),
+                "active_flight_ids": sorted(self._aircraft.keys()),
+                "active_aircraft": self.get_aircraft_snapshots(),
+                "neighbors": sorted(self._neighbors.keys()),
+                "adjacent_defined": sorted(self.adjacent_names),
+                "log_entries": len(self._log),
+                "warnings": list(summary.warnings) if summary else [],
+                "recent_events": self._log[-5:],
+                "handed_off": list(summary.handed_off) if summary else [],
+                "handoff_targets": dict(summary.handoff_targets) if summary else {},
+                "arrived": list(summary.arrived) if summary else [],
+            },
+        )
+        self._append_log(
+            f"[TICK {tick:>6} | T={sim_time:>10.1f}s] "
+            f"SNAPSHOT published aircraft={len(self._aircraft)}",
+            tick=tick,
+            sim_time=sim_time,
+            event_type="NEIGHBOR_SNAPSHOT_PUBLISHED",
+            payload={
+                "aircraft_count": len(self._aircraft),
+                "active_flight_ids": sorted(self._aircraft.keys()),
+                "neighbors": sorted(self._neighbors.keys()),
+            },
+        )
