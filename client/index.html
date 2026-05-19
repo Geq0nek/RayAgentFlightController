@@ -18,22 +18,20 @@
         
         <!-- WEB 1: RADAR -->
         <section id="page-radar" class="page-view active">
-            <h2>System Kontroli Lotów (Live)</h2>
-            <div id="map">
-            </div>
+            <div id="map"></div>
 
-        <div id="info-panel" class="side-panel">
-            <span class="close-btn" onclick="document.getElementById('info-panel').classList.remove('active')">&times;</span>
-            <div id="panel-content">
+            <div id="info-panel" class="side-panel">
+                <span class="close-btn" onclick="document.getElementById('info-panel').classList.remove('active')">&times;</span>
+                <div id="panel-content"></div>
             </div>
-        </div>
         </section>
 
         <!-- WEB 2: HISTOIRCAL DATA -->
         <section id="page-history" class="page-view">
-            <h2>Logi Historyczne i Decyzje Agentów</h2>
-            <table>
-            </table>
+            <h2 style="padding: 1rem 1.5rem; margin:0">Logi Historyczne i Decyzje Agentów</h2>
+            <div id="history-container" style="padding: 0 1.5rem; overflow-y: auto; height: calc(100% - 60px);">
+                <p style="color:#888">Wybierz zakładkę aby załadować dane.</p>
+            </div>
         </section>
     </div>
 

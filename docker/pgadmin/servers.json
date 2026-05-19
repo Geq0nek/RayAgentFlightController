@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "ATC Logs PostgreSQL",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "atc_logs",
+      "Username": "atc",
+      "SSLMode": "prefer"
+    }
+  }
+}

@@ -107,7 +107,6 @@ table {
     border-collapse: collapse; 
     background: #ffffff; 
     color: #333;
-    border-radius: 8px;
     overflow: hidden;
     box-shadow: 0 2px 10px rgba(0,0,0,0.05);
 }
@@ -121,9 +120,9 @@ th, td {
 
 /* Header background color (Light Blue) */
 th {
-     background: #f1f5f9; 
-     color: #475569;
-     font-weight: 600;
+    background: #f1f5f9; 
+    color: #475569;
+    font-weight: 600;
 }
 
 .side-panel {
@@ -167,4 +166,240 @@ th {
 
 .aircraft-marker div {
     pointer-events: none;
+}
+
+/* =============================================
+   LIVE RADAR — nowe elementy
+   ============================================= */
+
+/* Mapa zajmuje całą wysokość section-a */
+#page-radar { padding: 0 !important; position: relative; }
+#map { height: 100% !important; border: none !important; border-radius: 0 !important; }
+
+/* Pasek statusu w nav */
+.status-bar {
+    margin-left: auto;
+    font-size: 0.82em;
+    color: #555;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.dot-green { display:inline-block; width:8px; height:8px; border-radius:50%; background:#2ecc71; }
+.dot-red   { display:inline-block; width:8px; height:8px; border-radius:50%; background:#e74c3c; }
+
+
+/* Marker samolotu (div icon) */
+.plane-marker {
+    font-size: 22px;
+    line-height: 1;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
+    cursor: pointer;
+    user-select: none;
+}
+
+/* Marker wieży (div icon) */
+.tower-marker {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    border: 3px solid #555;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.85);
+    padding: 2px;
+}
+.tower-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-top: 2px;
+}
+
+/* Popup lotu */
+.flight-popup { font-family: 'Segoe UI', sans-serif; font-size: 0.9em; min-width: 220px; }
+.fp-header { padding: 6px 8px; font-size: 1em; margin-bottom: 6px; }
+.fp-table { width: 100%; border-collapse: collapse; }
+.fp-table td { padding: 3px 6px; border-bottom: 1px solid #eee; }
+.fp-table td:first-child { color: #888; font-size: 0.85em; }
+
+/* Panel agenta / województwa */
+.agent-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 0.83em; color: #000000; }
+.agent-table th { background: rgba(255,255,255,0.1); padding: 5px 8px; font-weight: 600; text-align: left; }
+.agent-table td { padding: 4px 8px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.log-container { max-height: 160px; overflow-y: auto; font-size: 0.78em; }
+.log-entry { padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.07); color: #b0bec5; line-height: 1.4; }
+
+/* Strona historii */
+.history-table { width: 100%; border-collapse: collapse; background: #fff; font-size: 0.88em; }
+.history-table th { background: #f1f5f9; padding: 10px 12px; text-align: left; color: #475569; }
+.history-table td { padding: 8px 12px; border-bottom: 1px solid #e1e8f0; }
+.history-table tr:hover td { background: #f8fafc; }
+.badge-warn { background: #f39c12; color: #fff; padding: 1px 6px; border-radius: 10px; font-size: 0.8em; }
+
+.history-toolbar {
+    background: #ffffff;
+    border: 1px solid #d8e1ec;
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: end;
+    gap: 12px;
+    box-shadow: 0 1px 8px rgba(15, 23, 42, 0.06);
+}
+
+.filter-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(130px, 1fr));
+    gap: 10px;
+    flex: 1;
+}
+
+.filter-grid > label,
+.filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    color: #475569;
+    font-size: 0.78em;
+    font-weight: 600;
+}
+
+.filter-grid select,
+.filter-grid input {
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    padding: 7px 8px;
+    font-size: 0.95em;
+    background: #fff;
+    color: #1f2937;
+    min-width: 0;
+}
+
+.multi-select {
+    position: relative;
+    min-width: 0;
+}
+
+.multi-select-toggle {
+    width: 100%;
+    min-height: 34px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    background: #fff;
+    color: #1f2937;
+    padding: 7px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 0.95em;
+    text-align: left;
+}
+
+.multi-select-toggle span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.multi-select-arrow {
+    color: #64748b;
+    font-size: 0.8em;
+}
+
+.multi-select-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 20;
+    max-height: 220px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
+    padding: 5px;
+}
+
+.multi-option {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 6px;
+    border-radius: 3px;
+    color: #1f2937;
+    font-size: 0.9em;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.multi-option:hover {
+    background: #f1f5f9;
+}
+
+.multi-option input {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    flex: 0 0 auto;
+}
+
+.multi-option span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.multi-empty {
+    color: #64748b;
+    padding: 8px;
+    font-size: 0.9em;
+}
+
+#history-apply-filters {
+    background: #0f766e;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 14px;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+#history-apply-filters:hover { background: #115e59; }
+
+.history-section-title {
+    color: #334155;
+    font-size: 1em;
+    margin: 16px 0 8px;
+}
+
+.table-scroll {
+    max-height: 360px;
+    overflow: auto;
+    border: 1px solid #e1e8f0;
+    background: #fff;
+}
+
+.history-log-table th { position: sticky; top: 0; z-index: 1; }
+.history-log-table td:nth-child(7) { min-width: 320px; }
+.empty-cell { color: #64748b; text-align: center; padding: 18px !important; }
+.error-cell { color: #c0392b; }
+.db-status-ok,
+.db-status-warn {
+    font-size: 0.78em;
+    white-space: nowrap;
+    padding: 6px 8px;
+    border-radius: 4px;
+}
+.db-status-ok { color: #166534; background: #dcfce7; }
+.db-status-warn { color: #991b1b; background: #fee2e2; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+
+@media (max-width: 900px) {
+    .history-toolbar { align-items: stretch; flex-direction: column; }
+    .filter-grid { grid-template-columns: repeat(2, minmax(120px, 1fr)); width: 100%; }
+    #history-apply-filters { align-self: flex-start; }
 }

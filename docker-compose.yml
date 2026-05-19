@@ -1,4 +1,36 @@
 services:
+  postgres:
+    image: postgres:16
+    container_name: atc_postgres_container
+    environment:
+      - POSTGRES_DB=atc_logs
+      - POSTGRES_USER=atc
+      - POSTGRES_PASSWORD=atc
+    ports:
+      - "5433:5432"
+    volumes:
+      - atc_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U atc -d atc_logs"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: atc_pgadmin_container
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@example.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    ports:
+      - "5050:80"
+    volumes:
+      - atc_pgadmin_data:/var/lib/pgadmin
+      - ./docker/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   # --- BACKEND: Python Flask API & Ray Agents ---
   server:
     build: 
@@ -17,6 +49,10 @@ services:
     environment:
       - PYTHONUNBUFFERED=1     # Ensure logs are printed to console immediately
       - FLASK_ENV=development  # Enable hot-reloading for the API
+      - DATABASE_URL=postgresql://atc:atc@postgres:5432/atc_logs
+    depends_on:
+      postgres:
+        condition: service_healthy
     # Set the working directory to the server subfolder for Python imports
     working_dir: /workspace/server
     command: python main.py
@@ -35,3 +71,7 @@ services:
     # The frontend waits for the backend to be ready
     depends_on:
       - server
+
+volumes:
+  atc_postgres_data:
+  atc_pgadmin_data:
