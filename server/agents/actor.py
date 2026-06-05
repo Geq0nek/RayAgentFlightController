@@ -38,30 +38,7 @@ from typing import Dict, List, Optional, Tuple
 
 import ray
 
-# ---------------------------------------------------------------------------
-# GeoJSON → topology key mapping
-# ---------------------------------------------------------------------------
-# The GeoJSON boundary file uses Polish names with diacritics and Title Case,
-# while the YAML topology (and actor names) use simplified ASCII-lowercase keys.
-# This mapping is the single authoritative translation between the two systems.
-_GEOJSON_TO_TOPOLOGY_KEY: Dict[str, str] = {
-    "Dolnośląskie":       "dolnoslaskie",
-    "Kujawsko-Pomorskie": "kujawsko_pomorskie",
-    "Lubelskie":          "lubelskie",
-    "Lubuskie":           "lubuskie",
-    "Łódzkie":            "lodzkie",
-    "Małopolskie":        "malopolskie",
-    "Mazowieckie":        "mazowieckie",
-    "Opolskie":           "opolskie",
-    "Podkarpackie":       "podkarpackie",
-    "Podlaskie":          "podlaskie",
-    "Pomorskie":          "pomorskie",
-    "Śląskie":            "slaskie",
-    "Świętokrzyskie":     "swietokrzyskie",
-    "Warmińsko-Mazurskie":"warminsko_mazurskie",
-    "Wielkopolskie":      "wielkopolskie",
-    "Zachodniopomorskie": "zachodniopomorskie",
-}
+from voivodeship_keys import normalize_voivodeship_key
 
 
 # ---------------------------------------------------------------------------
@@ -323,7 +300,7 @@ class VoivodeshipActor:
         :param tick:      Clock tick at which the transfer occurred.
         :returns:         True on success.
         """
-        previous_voivodeship = aircraft.actual_voivodeship
+        previous_voivodeship = normalize_voivodeship_key(aircraft.actual_voivodeship)
         aircraft.actual_voivodeship = self.name
         self._aircraft[aircraft.id] = aircraft
 
@@ -349,6 +326,39 @@ class VoivodeshipActor:
         self._logger.info(msg)
         await self._publish_neighbor_snapshot(tick=tick, sim_time=sim_time)
         return True
+
+    async def relinquish_aircraft(
+        self,
+        aircraft_id: str,
+        sim_time: float,
+        tick: int,
+        reason: str = "transfer",
+    ):
+        """
+        Remove an aircraft from this tower and return the live object.
+
+        Used by ATCManager reconciliation when GPS shows the flight belongs
+        to another voivodeship (e.g. after HANDOFF_NON_ADJACENT).
+        """
+        aircraft = self._aircraft.pop(aircraft_id, None)
+        if aircraft is None:
+            return None
+
+        msg = (
+            f"[TICK {tick:>6} | T={sim_time:>10.1f}s] "
+            f"RELINQUISH {aircraft_id:>10} : {self.name} ({reason})"
+        )
+        self._append_log(
+            msg,
+            tick=tick,
+            sim_time=sim_time,
+            event_type="AIRCRAFT_RELINQUISHED",
+            flight_id=aircraft_id,
+            payload={"reason": reason, "destination": aircraft.destination},
+        )
+        self._logger.info(msg)
+        await self._publish_neighbor_snapshot(tick=tick, sim_time=sim_time)
+        return aircraft
 
     async def add_aircraft(
         self,
@@ -483,7 +493,7 @@ class VoivodeshipActor:
                 aircraft.landing_date = datetime.datetime.now()
                 raw_arrival_voiv = self._generator.actual_voivodeship(aircraft)
                 aircraft.actual_voivodeship = (
-                    _GEOJSON_TO_TOPOLOGY_KEY.get(raw_arrival_voiv, raw_arrival_voiv)
+                    normalize_voivodeship_key(raw_arrival_voiv)
                     if raw_arrival_voiv else self.name
                 )
 
@@ -514,7 +524,7 @@ class VoivodeshipActor:
                 # cross-actor comparisons and neighbor lookups are consistent.
                 raw_voivodeship: Optional[str] = self._generator.actual_voivodeship(aircraft)
                 new_voivodeship: Optional[str] = (
-                    _GEOJSON_TO_TOPOLOGY_KEY.get(raw_voivodeship, raw_voivodeship)
+                    normalize_voivodeship_key(raw_voivodeship)
                     if raw_voivodeship else None
                 )
 
@@ -522,6 +532,7 @@ class VoivodeshipActor:
                     # --------------------------------------------------------
                     # Aircraft crossed into a different voivodeship
                     # --------------------------------------------------------
+                    aircraft.actual_voivodeship = new_voivodeship
                     await self._handoff_aircraft(
                         aircraft_id=aircraft_id,
                         aircraft=aircraft,
@@ -564,7 +575,7 @@ class VoivodeshipActor:
 
         If the target is not a direct neighbour (e.g. a jump over a small
         voivodeship at high speed), a warning is logged and the aircraft is
-        kept here until the manager reconciles on the next tick.
+        kept here until ATCManager reconciles on the next tick via snapshots.
         """
         if target_voivodeship in self._neighbors:
             target_actor = self._neighbors[target_voivodeship]
@@ -607,9 +618,9 @@ class VoivodeshipActor:
                 )
                 summary.warnings.append(msg)
         else:
-            # Non-adjacent voivodeship — aircraft moved faster than one tick
-            # can resolve via the adjacency graph.  Keep ownership here and
-            # warn; the manager may trigger an emergency re-route next tick.
+            # Non-adjacent voivodeship — handoff via neighbours failed this tick.
+            # Keep object here; reflect GPS voivodeship so snapshots/reconcile work.
+            aircraft.actual_voivodeship = target_voivodeship
             msg = (
                 f"[TICK {tick:>6} | T={sim_time:>10.1f}s] "
                 f"WARNING {aircraft_id:>10} jumped to non-adjacent "
@@ -704,8 +715,8 @@ class VoivodeshipActor:
                 message=message,
                 tick=tick,
                 sim_time=sim_time,
-                source_voivodeship=source_voivodeship or self.name,
-                target_voivodeship=target_voivodeship,
+                source_voivodeship=normalize_voivodeship_key(source_voivodeship or self.name),
+                target_voivodeship=normalize_voivodeship_key(target_voivodeship),
                 flight_id=flight_id,
                 payload=payload or {},
             )

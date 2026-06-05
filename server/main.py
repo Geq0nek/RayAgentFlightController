@@ -15,7 +15,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "agents"))
 import ray
 from flask import Flask
 from flask_cors import CORS
-
 from agents.manager import ATCManager
 from api.routes import api
 
