@@ -11,8 +11,9 @@ ATCManager is an asynchronous Ray actor (async actor) that:
        a. fetches (sim_time, tick, delta_hours) from SimulationClock.advance()
        b. calls VoivodeshipActor.update() on all towers in parallel
        c. processes TickSummary objects: collects statistics, logs warnings
-       d. randomly generates new flights via FlightSimulator.generate_random_connected_flight()
-       e. releases IDs of finished flights via FlightSimulator.generator.release_id()
+       d. reconciles misplaced flights via NeighborInfoService snapshots
+       e. randomly generates new flights via FlightSimulator.generate_random_connected_flight()
+       f. releases IDs of finished flights via FlightSimulator.generator.release_id()
   4. Provides query methods for the API / Flask layer.
 
 Flight Generation
@@ -312,12 +313,17 @@ class ATCManager:
                         source_voivodeship=summary.voivodeship,
                     )
 
-        # 4. Spawn new flight (if space available) — async, doesn't block event loop
+        # 4. Reconcile ownership using published snapshots (fixes HANDOFF_NON_ADJACENT etc.)
+        reconciled = await self._reconcile_from_snapshots(sim_time, tick)
+        if reconciled:
+            logger.info("[ATCManager] Reconciled %d flight(s) at tick %d", reconciled, tick)
+
+        # 5. Spawn new flight (if space available) — async, doesn't block event loop
         current_total = len(self._active_flight_ids)
         if current_total < self.max_flights and random.random() > 0.55:
             await self._spawn_random_flight_async(sim_time, tick)
 
-        # 5. Save report
+        # 6. Save report
         report = TickReport(
             tick=tick,
             sim_time=sim_time,
@@ -327,17 +333,123 @@ class ATCManager:
             total_warnings=total_warnings,
             per_voivodeship=per_voiv,
         )
-        self._tick_reports.append(report.to_dict())
+        report_payload = report.to_dict()
+        report_payload["reconciled"] = reconciled
+        self._tick_reports.append(report_payload)
         if len(self._tick_reports) > self._report_capacity:
             self._tick_reports = self._tick_reports[-self._report_capacity:]
         self._record_manager_log(
             "TICK_COMPLETED",
             f"Tick {tick} completed: active={report.total_active}, "
-            f"handoff={total_handed}, arrived={total_arrived}, warnings={total_warnings}.",
+            f"handoff={total_handed}, arrived={total_arrived}, "
+            f"warnings={total_warnings}, reconciled={reconciled}.",
             tick=tick,
             sim_time=sim_time,
-            payload=report.to_dict(),
+            payload=report_payload,
         )
+
+    async def _reconcile_from_snapshots(self, sim_time: float, tick: int) -> int:
+        """
+        Fix flight ownership when towers disagree with GPS / handoff failures.
+
+        Reads NeighborInfoService snapshots after each tick. For every active
+        flight, the canonical owner is the voivodeship from ``actual_voivodeship``
+        in the snapshot (GeoJSON GPS). If the flight still sits in another tower's
+        ``_aircraft`` dict (e.g. after HANDOFF_NON_ADJACENT), the manager removes
+        it there and calls ``accept_aircraft`` on the canonical tower.
+        """
+        from voivodeship_keys import normalize_voivodeship_key
+
+        snapshots = await self._neighbor_info_service.get_all_snapshots.remote()
+        if not snapshots:
+            return 0
+
+        claimants: Dict[str, List[str]] = {}
+        flight_snap: Dict[str, dict] = {}
+
+        for voiv_name, snap in snapshots.items():
+            if voiv_name not in self._actors:
+                continue
+            for ac in snap.get("active_aircraft", []):
+                fid = ac.get("id")
+                if not fid:
+                    continue
+                if voiv_name not in claimants.setdefault(fid, []):
+                    claimants[fid].append(voiv_name)
+                flight_snap[fid] = ac
+
+        reconciled = 0
+
+        for fid, holder_list in claimants.items():
+            ac_data = flight_snap[fid]
+            gps_voiv = normalize_voivodeship_key(ac_data.get("actual_voivodeship"))
+
+            if gps_voiv and gps_voiv in self._actors:
+                canonical = gps_voiv
+            elif len(holder_list) == 1:
+                canonical = holder_list[0]
+            else:
+                continue
+
+            if canonical not in self._actors:
+                continue
+
+            wrong_holders = [v for v in holder_list if v != canonical]
+
+            if not wrong_holders:
+                if self._active_flight_ids.get(fid) != canonical:
+                    self._active_flight_ids[fid] = canonical
+                continue
+
+            aircraft_obj = None
+            sources: List[str] = []
+
+            for wrong in wrong_holders:
+                if wrong not in self._actors:
+                    continue
+                removed = await self._actors[wrong].relinquish_aircraft.remote(
+                    fid, sim_time, tick, "manager_reconcile"
+                )
+                if removed is not None:
+                    aircraft_obj = removed
+                    sources.append(wrong)
+
+            if aircraft_obj is None:
+                continue
+
+            accepted = await self._actors[canonical].accept_aircraft.remote(
+                aircraft_obj, sim_time, tick
+            )
+            if not accepted:
+                # Put back on first source to avoid losing the flight
+                if sources:
+                    await self._actors[sources[0]].accept_aircraft.remote(
+                        aircraft_obj, sim_time, tick
+                    )
+                continue
+
+            self._active_flight_ids[fid] = canonical
+            reconciled += 1
+            self._record_manager_log(
+                "MANAGER_RECONCILED",
+                f"Reconciled {fid}: {sources} -> {canonical} (GPS={gps_voiv or canonical}).",
+                tick=tick,
+                sim_time=sim_time,
+                source_voivodeship="manager",
+                target_voivodeship=canonical,
+                flight_id=fid,
+                payload={
+                    "from_voivodeships": sources,
+                    "to_voivodeship": canonical,
+                    "gps_voivodeship": gps_voiv,
+                },
+            )
+            logger.info(
+                "[ATCManager] Reconciled %s: %s -> %s",
+                fid, sources, canonical,
+            )
+
+        return reconciled
 
     # ------------------------------------------------------------------
     # Flight generation — delegated to FlightSimulator
@@ -350,14 +462,14 @@ class ATCManager:
 
         FlightSimulator.add_flight() sets actual_voivodeship to the GeoJSON name
         (e.g., 'Mazowieckie'). Mapping to topology key (e.g., 'mazowieckie')
-        comes from _GEOJSON_TO_TOPOLOGY_KEY in actor.py.
+        comes from ``voivodeship_keys.normalize_voivodeship_key``.
 
         :returns: ``(aircraft, target_actor, voiv_key)`` or ``None``.
         """
-        from actor import _GEOJSON_TO_TOPOLOGY_KEY
+        from voivodeship_keys import normalize_voivodeship_key
 
         raw_voiv = aircraft.actual_voivodeship
-        voiv_key = _GEOJSON_TO_TOPOLOGY_KEY.get(raw_voiv, raw_voiv) if raw_voiv else None
+        voiv_key = normalize_voivodeship_key(raw_voiv) if raw_voiv else None
 
         if voiv_key and voiv_key in self._actors:
             return aircraft, self._actors[voiv_key], voiv_key
@@ -602,13 +714,15 @@ class ATCManager:
         payload: Optional[dict] = None,
     ) -> None:
         """Persist a structured manager-level event."""
+        from voivodeship_keys import normalize_voivodeship_key
+
         self._database_log_service.record.remote(
             event_type=event_type,
             message=message,
             tick=tick,
             sim_time=sim_time,
-            source_voivodeship=source_voivodeship or "manager",
-            target_voivodeship=target_voivodeship,
+            source_voivodeship=normalize_voivodeship_key(source_voivodeship or "manager"),
+            target_voivodeship=normalize_voivodeship_key(target_voivodeship),
             flight_id=flight_id,
             payload=payload or {},
         )

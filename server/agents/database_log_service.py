@@ -17,6 +17,8 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import ray
 
+from voivodeship_keys import expand_voivodeship_filter, normalize_voivodeship_key
+
 logger = logging.getLogger("ATC.DatabaseLogService")
 
 
@@ -62,8 +64,8 @@ class DatabaseLogService:
                         (
                             tick,
                             sim_time,
-                            source_voivodeship,
-                            target_voivodeship,
+                            normalize_voivodeship_key(source_voivodeship),
+                            normalize_voivodeship_key(target_voivodeship),
                             event_type,
                             flight_id,
                             message,
@@ -101,21 +103,25 @@ class DatabaseLogService:
         clauses: List[str] = []
         params: List[Any] = []
 
-        selected_sources = [value for value in (source_voivodeships or []) if value]
+        selected_sources = expand_voivodeship_filter(
+            [value for value in (source_voivodeships or []) if value]
+        )
         if selected_sources:
             clauses.append("source_voivodeship = ANY(%s)")
             params.append(selected_sources)
         elif source_voivodeship:
-            clauses.append("source_voivodeship = %s")
-            params.append(source_voivodeship)
+            clauses.append("source_voivodeship = ANY(%s)")
+            params.append(expand_voivodeship_filter([source_voivodeship]))
 
-        selected_targets = [value for value in (target_voivodeships or []) if value]
+        selected_targets = expand_voivodeship_filter(
+            [value for value in (target_voivodeships or []) if value]
+        )
         if selected_targets:
             clauses.append("target_voivodeship = ANY(%s)")
             params.append(selected_targets)
         elif target_voivodeship:
-            clauses.append("target_voivodeship = %s")
-            params.append(target_voivodeship)
+            clauses.append("target_voivodeship = ANY(%s)")
+            params.append(expand_voivodeship_filter([target_voivodeship]))
 
         selected_event_types = [value for value in (event_types or []) if value]
         if selected_event_types:
@@ -199,7 +205,12 @@ class DatabaseLogService:
                     result = {}
                     for key, sql in queries.items():
                         cur.execute(sql)
-                        result[key] = [row[0] for row in cur.fetchall()]
+                        if key in {"sources", "targets"}:
+                            result[key] = self._dedupe_voivodeship_values(
+                                row[0] for row in cur.fetchall()
+                            )
+                        else:
+                            result[key] = [row[0] for row in cur.fetchall()]
                     return result
         except Exception as exc:  # noqa: BLE001
             self._last_error = str(exc)
@@ -242,13 +253,25 @@ class DatabaseLogService:
             "created_at": created_at,
             "tick": row[2],
             "sim_time": row[3],
-            "source_voivodeship": row[4],
-            "target_voivodeship": row[5],
+            "source_voivodeship": normalize_voivodeship_key(row[4]),
+            "target_voivodeship": normalize_voivodeship_key(row[5]),
             "event_type": row[6],
             "flight_id": row[7],
             "message": row[8],
             "payload": payload,
         }
+
+    @staticmethod
+    def _dedupe_voivodeship_values(values) -> List[str]:
+        seen = set()
+        normalized: List[str] = []
+        for value in values:
+            key = normalize_voivodeship_key(value)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            normalized.append(key)
+        return normalized
 
     @staticmethod
     def _redact_database_url(database_url: str) -> str:
